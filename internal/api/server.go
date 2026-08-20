@@ -1,11 +1,13 @@
 package api
 
-import "share_trip/internal/storage/repository"
-
 type Server struct {
-	Repository *repository.RepoPg
+	tripHandler  *TripHandler
+	readyHandler *ReadyHandler
 }
 
-func NewServer(repo *repository.RepoPg) *Server {
-	return &Server{Repository: repo}
+func NewServer(tripHandler *TripHandler, readyHandler *ReadyHandler) *Server {
+	return &Server{
+		tripHandler:  tripHandler,
+		readyHandler: readyHandler,
+	}
 }

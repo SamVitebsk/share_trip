@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"log"
+
 	config "share_trip/configs"
 	"share_trip/internal/api"
+	"share_trip/internal/service"
 	"share_trip/internal/storage/postgres"
 	"share_trip/internal/storage/repository"
 
@@ -29,8 +31,11 @@ func main() {
 	defer pool.Close()
 
 	repo := repository.NewRepoPg(pool)
+	tripService := service.NewTripService(repo)
+	tripHandler := api.NewTripHandler(tripService)
+	readyHandler := api.NewReadyHandler(repo)
 
-	server := api.NewServer(repo)
+	server := api.NewServer(tripHandler, readyHandler)
 
 	app := fiber.New()
 	server.Route(app.Group("/api"))
