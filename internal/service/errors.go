@@ -4,14 +4,15 @@ import (
 	"fmt"
 )
 
-type ErrorCode string
+type ErrorCode int
 
 const (
-	CodeValidation    ErrorCode = "VALIDATION"
-	CodeNotFound      ErrorCode = "NOT_FOUND"
-	CodeForbidden     ErrorCode = "FORBIDDEN"
-	CodeConflict      ErrorCode = "CONFLICT"
-	CodeUnprocessable ErrorCode = "UNPROCESSABLE"
+	CodeUnknown ErrorCode = iota
+	CodeValidation
+	CodeNotFound
+	CodeForbidden
+	CodeConflict
+	CodeUnprocessable
 )
 
 const validationErrorMessage = "ошибка валидации"

@@ -25,10 +25,13 @@ func (r *RepoPg) Create(ctx context.Context, trip domain.Trip, history domain.Tr
 		_ = tx.Rollback(ctx)
 	}()
 
-	if err := insertTrip(ctx, tx, trip); err != nil {
+	tripEntity := toTripEntity(trip)
+	if err := insertTrip(ctx, tx, tripEntity); err != nil {
 		return err
 	}
-	if err := insertTripHistory(ctx, tx, history); err != nil {
+
+	historyEntity := toTripHistoryEntity(history)
+	if err := insertTripHistory(ctx, tx, historyEntity); err != nil {
 		return err
 	}
 
@@ -39,7 +42,7 @@ func (r *RepoPg) Create(ctx context.Context, trip domain.Trip, history domain.Tr
 	return nil
 }
 
-func insertTrip(ctx context.Context, exec executor, trip domain.Trip) error {
+func insertTrip(ctx context.Context, exec executor, tripEntity tripEntity) error {
 	_, err := exec.Exec(
 		ctx,
 		`INSERT INTO trips(
@@ -52,14 +55,14 @@ func insertTrip(ctx context.Context, exec executor, trip domain.Trip) error {
                   status,
                   created_at
 			  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		trip.ID,
-		trip.DriverID,
-		trip.FromPoint,
-		trip.ToPoint,
-		trip.DepartureTime,
-		trip.Seats,
-		trip.Status,
-		trip.CreatedAt,
+		tripEntity.ID,
+		tripEntity.DriverID,
+		tripEntity.FromPoint,
+		tripEntity.ToPoint,
+		tripEntity.DepartureTime,
+		tripEntity.Seats,
+		tripEntity.Status,
+		tripEntity.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create trip: %w", mapPostgresError(err))
@@ -68,7 +71,7 @@ func insertTrip(ctx context.Context, exec executor, trip domain.Trip) error {
 	return nil
 }
 
-func insertTripHistory(ctx context.Context, exec executor, history domain.TripHistory) error {
+func insertTripHistory(ctx context.Context, exec executor, historyEntity tripHistoryEntity) error {
 	_, err := exec.Exec(
 		ctx,
 		`INSERT INTO trip_history(
@@ -78,11 +81,11 @@ func insertTripHistory(ctx context.Context, exec executor, history domain.TripHi
                   to_status,
                   created_at
 			  ) VALUES ($1, $2, $3, $4, $5)`,
-		history.ID,
-		history.TripID,
-		nullableTripStatus(history.FromStatus),
-		history.ToStatus,
-		history.CreatedAt,
+		historyEntity.ID,
+		historyEntity.TripID,
+		historyEntity.FromStatus,
+		historyEntity.ToStatus,
+		historyEntity.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("create trip history: %w", mapPostgresError(err))
@@ -91,16 +94,8 @@ func insertTripHistory(ctx context.Context, exec executor, history domain.TripHi
 	return nil
 }
 
-func nullableTripStatus(status *domain.TripStatus) any {
-	if status == nil {
-		return nil
-	}
-
-	return *status
-}
-
 func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, error) {
-	var trip domain.Trip
+	var trip tripEntity
 	err := r.pool.QueryRow(
 		ctx,
 		`SELECT 
@@ -133,5 +128,5 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
 		return domain.Trip{}, fmt.Errorf("get trip: %w", mapPostgresError(err))
 	}
 
-	return trip, nil
+	return toDomainTrip(trip), nil
 }

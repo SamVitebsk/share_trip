@@ -61,31 +61,31 @@ func writeServiceError(c *fiber.Ctx, err error) error {
 
 	var appErr *service.AppError
 	if errors.As(err, &appErr) {
-		code, ok := errorCodeFromServiceCode(appErr.Code)
-		if !ok {
-			return writeError(c, ErrorCodeInternal, "внутренняя ошибка сервера")
+		code := errorCodeFromServiceCode(appErr.Code)
+		if code == ErrorCodeInternal {
+			return writeError(c, code, "внутренняя ошибка сервера")
 		}
 
-		return writeError(c, code, err.Error())
+		return writeError(c, code, appErr.Error())
 	}
 
 	return writeError(c, ErrorCodeInternal, "внутренняя ошибка сервера")
 }
 
-func errorCodeFromServiceCode(code service.ErrorCode) (ErrorCode, bool) {
+func errorCodeFromServiceCode(code service.ErrorCode) ErrorCode {
 	switch code {
 	case service.CodeValidation:
-		return ErrorCodeValidation, true
+		return ErrorCodeValidation
 	case service.CodeNotFound:
-		return ErrorCodeNotFound, true
+		return ErrorCodeNotFound
 	case service.CodeForbidden:
-		return ErrorCodeForbidden, true
+		return ErrorCodeForbidden
 	case service.CodeConflict:
-		return ErrorCodeConflict, true
+		return ErrorCodeConflict
 	case service.CodeUnprocessable:
-		return ErrorCodeUnprocessable, true
+		return ErrorCodeUnprocessable
 	default:
-		return "", false
+		return ErrorCodeInternal
 	}
 }
 
