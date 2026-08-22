@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"share_trip/internal/domain"
+	"share_trip/internal/outbox"
 	"share_trip/internal/storage/repository"
 
 	"github.com/google/uuid"
@@ -49,6 +50,14 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) e
 			CreatedAt:  time.Now(),
 		}
 		if err := trips.AppendHistory(ctx, history); err != nil {
+			return publishTripError(cmd.TripID, err)
+		}
+
+		event, err := outbox.NewTripPublishedEvent(trip.ID)
+		if err != nil {
+			return publishTripError(cmd.TripID, err)
+		}
+		if err := trips.AppendOutboxEvent(ctx, event); err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
 
