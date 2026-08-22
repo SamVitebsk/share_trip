@@ -95,10 +95,10 @@ func insertTripHistory(ctx context.Context, exec executor, historyEntity tripHis
 }
 
 func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, error) {
-	var trip tripEntity
-	err := r.pool.QueryRow(
-		ctx,
-		`SELECT 
+	trip, err := scanTrip(
+		r.pool.QueryRow(
+			ctx,
+			`SELECT 
     			id,
     			driver_id,
     			from_point,
@@ -109,8 +109,73 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
     			created_at
 			FROM trips
 			WHERE id = $1`,
+			tripId,
+		),
+	)
+	if err != nil {
+		return domain.Trip{}, fmt.Errorf("get trip: %w", err)
+	}
+
+	return trip, nil
+}
+
+func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, error) {
+	trip, err := scanTrip(
+		r.tx.QueryRow(
+			ctx,
+			`SELECT 
+    			id,
+    			driver_id,
+    			from_point,
+    			to_point,
+    			departure_time,
+    			seats,
+    			status,
+    			created_at
+			FROM trips
+			WHERE id = $1
+			FOR UPDATE`,
+			tripId,
+		),
+	)
+	if err != nil {
+		return domain.Trip{}, fmt.Errorf("get trip for update: %w", err)
+	}
+
+	return trip, nil
+}
+
+func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status domain.TripStatus) error {
+	commandTag, err := r.tx.Exec(
+		ctx,
+		`UPDATE trips
+			SET status = $2
+			WHERE id = $1`,
 		tripId,
-	).Scan(
+		string(status),
+	)
+	if err != nil {
+		return fmt.Errorf("update trip status: %w", mapPostgresError(err))
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+func (r *TripRepoTx) AppendHistory(ctx context.Context, history domain.TripHistory) error {
+	historyEntity := toTripHistoryEntity(history)
+	if err := insertTripHistory(ctx, r.tx, historyEntity); err != nil {
+		return fmt.Errorf("append trip history: %w", err)
+	}
+
+	return nil
+}
+
+func scanTrip(row pgx.Row) (domain.Trip, error) {
+	var trip tripEntity
+	err := row.Scan(
 		&trip.ID,
 		&trip.DriverID,
 		&trip.FromPoint,
@@ -125,7 +190,7 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
 		return domain.Trip{}, ErrNotFound
 	}
 	if err != nil {
-		return domain.Trip{}, fmt.Errorf("get trip: %w", mapPostgresError(err))
+		return domain.Trip{}, mapPostgresError(err)
 	}
 
 	return toDomainTrip(trip), nil

@@ -31,7 +31,12 @@ func main() {
 	defer pool.Close()
 
 	repo := repository.NewRepoPg(pool)
-	tripService := service.NewTripService(repo)
+	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
+		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
+			return fn(ctx, trips)
+		})
+	}
+	tripService := service.NewTripService(repo, runTripTx)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 
