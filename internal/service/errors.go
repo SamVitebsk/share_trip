@@ -7,12 +7,12 @@ import (
 type ErrorCode int
 
 const (
-	CodeUnknown ErrorCode = iota
-	CodeValidation
-	CodeNotFound
-	CodeForbidden
-	CodeConflict
-	CodeUnprocessable
+	CodeUnknown       ErrorCode = 0
+	CodeValidation    ErrorCode = 1
+	CodeNotFound      ErrorCode = 2
+	CodeForbidden     ErrorCode = 3
+	CodeConflict      ErrorCode = 4
+	CodeUnprocessable ErrorCode = 5
 )
 
 const validationErrorMessage = "ошибка валидации"

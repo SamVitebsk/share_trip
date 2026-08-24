@@ -1,15 +1,9 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrTripDriverMismatch          = errors.New("водитель не является владельцем поездки")
-	ErrTripInvalidStatusTransition = errors.New("недопустимый переход статуса поездки")
 )
 
 func (t *Trip) Publish(driverID uuid.UUID) error {

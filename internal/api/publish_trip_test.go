@@ -23,19 +23,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		DriverID: driverID.String(),
 	}
 
-	publishBody, err := json.Marshal(publishPayload)
-	require.NoError(t, err)
-
-	publishReq, err := http.NewRequest(
-		http.MethodPost,
-		fmt.Sprintf("/api/trip/%s/publish", tripID),
-		bytes.NewReader(publishBody),
-	)
-	require.NoError(t, err)
-	publishReq.Header.Set("Content-Type", "application/json")
-
-	publishResp, err := testApp.Test(publishReq, -1)
-	require.NoError(t, err)
+	publishResp := publishTrip(t, tripID, publishPayload)
 	defer func() {
 		if err := publishResp.Body.Close(); err != nil {
 			t.Errorf("close publish response body: %v", err)
@@ -74,6 +62,59 @@ func TestServer_PublishTrip(t *testing.T) {
 	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
 }
 
+func TestServer_PublishTrip_ForbiddenWhenDriverMismatch(t *testing.T) {
+	truncateTestTables(t)
+
+	tripID, _ := insertTrip(t, "draft")
+	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+		DriverID: uuid.NewString(),
+	})
+	defer func() {
+		if err := publishResp.Body.Close(); err != nil {
+			t.Errorf("close publish response body: %v", err)
+		}
+	}()
+
+	require.Equal(t, http.StatusForbidden, publishResp.StatusCode)
+	require.Equal(t, "draft", getTripStatus(t, tripID))
+	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
+}
+
+func TestServer_PublishTrip_NotFound(t *testing.T) {
+	truncateTestTables(t)
+
+	tripID := uuid.New()
+	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+		DriverID: uuid.NewString(),
+	})
+	defer func() {
+		if err := publishResp.Body.Close(); err != nil {
+			t.Errorf("close publish response body: %v", err)
+		}
+	}()
+
+	require.Equal(t, http.StatusNotFound, publishResp.StatusCode)
+	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
+}
+
+func TestServer_PublishTrip_ConflictWhenStatusDoesNotAllowPublishing(t *testing.T) {
+	truncateTestTables(t)
+
+	tripID, driverID := insertTrip(t, "canceled")
+	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+		DriverID: driverID.String(),
+	})
+	defer func() {
+		if err := publishResp.Body.Close(); err != nil {
+			t.Errorf("close publish response body: %v", err)
+		}
+	}()
+
+	require.Equal(t, http.StatusConflict, publishResp.StatusCode)
+	require.Equal(t, "canceled", getTripStatus(t, tripID))
+	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
+}
+
 func TestServer_PublishTrip_AlreadyPublished(t *testing.T) {
 	truncateTestTables(t)
 
@@ -96,7 +137,22 @@ func TestServer_PublishTrip_AlreadyPublished(t *testing.T) {
 		DriverID: driverID.String(),
 	}
 
-	publishBody, err := json.Marshal(publishPayload)
+	publishResp := publishTrip(t, tripID, publishPayload)
+	defer func() {
+		if err := publishResp.Body.Close(); err != nil {
+			t.Errorf("close publish response body: %v", err)
+		}
+	}()
+
+	require.Equal(t, http.StatusNoContent, publishResp.StatusCode)
+	require.Equal(t, "published", getTripStatus(t, tripID))
+	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
+}
+
+func publishTrip(t *testing.T, tripID uuid.UUID, payload api.PublishTripRequest) *http.Response {
+	t.Helper()
+
+	publishBody, err := json.Marshal(payload)
 	require.NoError(t, err)
 
 	publishReq, err := http.NewRequest(
@@ -109,14 +165,8 @@ func TestServer_PublishTrip_AlreadyPublished(t *testing.T) {
 
 	publishResp, err := testApp.Test(publishReq, -1)
 	require.NoError(t, err)
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
-		}
-	}()
 
-	require.Equal(t, http.StatusNoContent, publishResp.StatusCode)
-	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
+	return publishResp
 }
 
 func insertTrip(t *testing.T, status string) (uuid.UUID, uuid.UUID) {
@@ -145,6 +195,21 @@ func insertTrip(t *testing.T, status string) (uuid.UUID, uuid.UUID) {
 	require.NoError(t, err)
 
 	return tripID, driverID
+}
+
+func getTripStatus(t *testing.T, tripID uuid.UUID) string {
+	t.Helper()
+
+	var status string
+	err := testDB.QueryRow(
+		`SELECT status
+		 FROM trips
+		 WHERE id = $1::uuid`,
+		tripID.String(),
+	).Scan(&status)
+	require.NoError(t, err)
+
+	return status
 }
 
 func countTripPublishedEvents(t *testing.T, tripID uuid.UUID) int {

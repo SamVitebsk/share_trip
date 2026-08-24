@@ -106,7 +106,7 @@ func publishTripError(tripID uuid.UUID, err error) error {
 		return Forbidden(domain.ErrTripDriverMismatch.Error())
 	}
 	if errors.Is(err, domain.ErrTripInvalidStatusTransition) {
-		return Unprocessable(err.Error())
+		return Conflict(err.Error())
 	}
 
 	return err
