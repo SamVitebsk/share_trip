@@ -16,7 +16,7 @@ func (t *Trip) Publish(driverID uuid.UUID) error {
 	}
 
 	fromStatus := t.Status
-	if !CanTransitionTripStatus(fromStatus, TripStatusPublished) {
+	if !canTransitionTripStatus(fromStatus, TripStatusPublished) {
 		return fmt.Errorf("%w: %s -> %s", ErrTripInvalidStatusTransition, fromStatus, TripStatusPublished)
 	}
 

@@ -18,13 +18,25 @@ type PublishTripCommand struct {
 	DriverID uuid.UUID
 }
 
-func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) error {
+type PublishTripResult struct {
+	ID            uuid.UUID
+	DriverID      uuid.UUID
+	FromPoint     string
+	ToPoint       string
+	DepartureTime time.Time
+	Seats         int
+	Status        domain.TripStatus
+	CreatedAt     time.Time
+}
+
+func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (*PublishTripResult, error) {
 	if err := validatePublishTripCommand(cmd); err != nil {
-		return err
+		return nil, err
 	}
 
-	err := s.runTripTx(ctx, func(ctx context.Context, trips TripRepositoryTx) error {
-		trip, err := trips.GetForUpdateByID(ctx, cmd.TripID)
+	var publishedTrip domain.Trip
+	err := s.runTripTx(ctx, func(ctx context.Context, tripRepositoryTx TripRepositoryTx) error {
+		trip, err := tripRepositoryTx.GetForUpdateByID(ctx, cmd.TripID)
 		if err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
@@ -35,12 +47,15 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) e
 		}
 
 		if fromStatus == trip.Status {
+			publishedTrip = trip
 			return nil
 		}
 
-		if err := trips.UpdateStatus(ctx, trip.ID, trip.Status); err != nil {
+		updatedTrip, err := tripRepositoryTx.UpdateStatus(ctx, trip.ID, trip.Status)
+		if err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
+		publishedTrip = updatedTrip
 
 		history := domain.TripHistory{
 			ID:         uuid.New(),
@@ -49,7 +64,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) e
 			ToStatus:   trip.Status,
 			CreatedAt:  time.Now(),
 		}
-		if err := trips.AppendHistory(ctx, history); err != nil {
+		if err := tripRepositoryTx.CreateHistory(ctx, history); err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
 
@@ -57,17 +72,19 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) e
 		if err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
-		if err := trips.AppendOutboxEvent(ctx, event); err != nil {
+		if err := tripRepositoryTx.CreateOutboxEvent(ctx, event); err != nil {
 			return publishTripError(cmd.TripID, err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return publishTripError(cmd.TripID, err)
+		return nil, publishTripError(cmd.TripID, err)
 	}
 
-	return nil
+	publishTripResult := toPublishTripResult(publishedTrip)
+
+	return &publishTripResult, nil
 }
 
 func validatePublishTripCommand(cmd PublishTripCommand) error {
@@ -91,6 +108,19 @@ func validatePublishTripCommand(cmd PublishTripCommand) error {
 	}
 
 	return nil
+}
+
+func toPublishTripResult(trip domain.Trip) PublishTripResult {
+	return PublishTripResult{
+		ID:            trip.ID,
+		DriverID:      trip.DriverID,
+		FromPoint:     trip.FromPoint,
+		ToPoint:       trip.ToPoint,
+		DepartureTime: trip.DepartureTime,
+		Seats:         trip.Seats,
+		Status:        trip.Status,
+		CreatedAt:     trip.CreatedAt,
+	}
 }
 
 func publishTripError(tripID uuid.UUID, err error) error {

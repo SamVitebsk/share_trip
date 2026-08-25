@@ -30,12 +30,12 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		return writeError(c, ErrorCodeValidation, "тело запроса должно быть валидным JSON")
 	}
 
-	cmd, err := createTripCommandFromRequest(req)
+	createTripCommand, err := createTripCommandFromRequest(req)
 	if err != nil {
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
 
-	result, err := h.tripService.CreateTrip(c.Context(), cmd)
+	result, err := h.tripService.CreateTrip(c.Context(), createTripCommand)
 	if err != nil {
 		return writeServiceError(c, err)
 	}

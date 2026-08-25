@@ -145,26 +145,32 @@ func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (do
 	return trip, nil
 }
 
-func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status domain.TripStatus) error {
-	commandTag, err := r.tx.Exec(
+func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status domain.TripStatus) (domain.Trip, error) {
+	trip, err := scanTrip(r.tx.QueryRow(
 		ctx,
 		`UPDATE trips
 			SET status = $2
-			WHERE id = $1`,
+			WHERE id = $1
+			RETURNING
+				id,
+				driver_id,
+				from_point,
+				to_point,
+				departure_time,
+				seats,
+				status,
+				created_at`,
 		tripId,
 		string(status),
-	)
+	))
 	if err != nil {
-		return fmt.Errorf("update trip status: %w", mapPostgresError(err))
-	}
-	if commandTag.RowsAffected() == 0 {
-		return ErrNotFound
+		return domain.Trip{}, fmt.Errorf("update trip status: %w", mapPostgresError(err))
 	}
 
-	return nil
+	return trip, nil
 }
 
-func (r *TripRepoTx) AppendHistory(ctx context.Context, history domain.TripHistory) error {
+func (r *TripRepoTx) CreateHistory(ctx context.Context, history domain.TripHistory) error {
 	historyEntity := toTripHistoryEntity(history)
 	if err := insertTripHistory(ctx, r.tx, historyEntity); err != nil {
 		return fmt.Errorf("append trip history: %w", err)

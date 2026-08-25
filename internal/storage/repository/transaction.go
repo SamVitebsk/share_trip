@@ -2,19 +2,30 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func tx(ctx context.Context, pool *pgxpool.Pool, block func(tx pgx.Tx) error) error {
+func tx(ctx context.Context, pool *pgxpool.Pool, block func(tx pgx.Tx) error) (err error) {
 	txBegin, err := pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", mapPostgresError(err))
 	}
 	defer func() {
-		_ = txBegin.Rollback(ctx)
+		if err != nil {
+			if rollbackErr := txBegin.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+				slog.ErrorContext(ctx, "rollback transaction failed", "error", rollbackErr)
+			}
+
+			slog.ErrorContext(ctx, "transaction failed", "error", err)
+			return
+		}
+
+		slog.InfoContext(ctx, "transaction committed")
 	}()
 
 	if err := block(txBegin); err != nil {

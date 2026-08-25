@@ -11,7 +11,7 @@ var tripStatusTransitions = map[TripStatus]map[TripStatus]struct{}{
 	},
 }
 
-func CanTransitionTripStatus(from, to TripStatus) bool {
+func canTransitionTripStatus(from, to TripStatus) bool {
 	allowedTransitions, ok := tripStatusTransitions[from]
 	if !ok {
 		return false

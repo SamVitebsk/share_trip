@@ -47,7 +47,7 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 		CreatedAt:  now,
 	}
 
-	err := s.trips.Create(ctx, trip, history)
+	err := s.tripRepository.Create(ctx, trip, history)
 	if err != nil {
 		return CreateTripResult{}, err
 	}

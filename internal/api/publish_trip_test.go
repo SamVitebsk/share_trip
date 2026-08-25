@@ -30,31 +30,9 @@ func TestServer_PublishTrip(t *testing.T) {
 		}
 	}()
 
-	require.Equal(t, http.StatusNoContent, publishResp.StatusCode)
+	require.Equal(t, http.StatusOK, publishResp.StatusCode)
 
-	getReq, err := http.NewRequest(
-		http.MethodGet,
-		fmt.Sprintf("/api/trip/%s", tripID),
-		nil,
-	)
-	require.NoError(t, err)
-
-	getResp, err := testApp.Test(getReq, -1)
-	require.NoError(t, err)
-	defer func() {
-		if err := getResp.Body.Close(); err != nil {
-			t.Errorf("close get response body: %v", err)
-		}
-	}()
-
-	require.Equal(t, http.StatusOK, getResp.StatusCode)
-
-	getRespBody, err := io.ReadAll(getResp.Body)
-	require.NoError(t, err)
-
-	var tripGot api.TripResponse
-	err = json.Unmarshal(getRespBody, &tripGot)
-	require.NoError(t, err)
+	tripGot := decodePublishTripResponse(t, publishResp)
 
 	require.Equal(t, tripID.String(), tripGot.ID)
 	require.Equal(t, driverID.String(), tripGot.DriverID)
@@ -144,7 +122,12 @@ func TestServer_PublishTrip_AlreadyPublished(t *testing.T) {
 		}
 	}()
 
-	require.Equal(t, http.StatusNoContent, publishResp.StatusCode)
+	require.Equal(t, http.StatusOK, publishResp.StatusCode)
+	tripGot := decodePublishTripResponse(t, publishResp)
+
+	require.Equal(t, tripID.String(), tripGot.ID)
+	require.Equal(t, driverID.String(), tripGot.DriverID)
+	require.Equal(t, "published", tripGot.Status)
 	require.Equal(t, "published", getTripStatus(t, tripID))
 	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
 }
@@ -167,6 +150,19 @@ func publishTrip(t *testing.T, tripID uuid.UUID, payload api.PublishTripRequest)
 	require.NoError(t, err)
 
 	return publishResp
+}
+
+func decodePublishTripResponse(t *testing.T, resp *http.Response) api.PublishTripResponse {
+	t.Helper()
+
+	respBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var got api.PublishTripResponse
+	err = json.Unmarshal(respBody, &got)
+	require.NoError(t, err)
+
+	return got
 }
 
 func insertTrip(t *testing.T, status string) (uuid.UUID, uuid.UUID) {

@@ -7,7 +7,7 @@ import (
 	"share_trip/internal/outbox"
 )
 
-func (r *TripRepoTx) AppendOutboxEvent(ctx context.Context, event outbox.Event) error {
+func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) error {
 	eventEntity := toOutboxEventEntity(event)
 	_, err := r.tx.Exec(
 		ctx,

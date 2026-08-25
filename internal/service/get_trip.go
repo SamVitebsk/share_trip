@@ -28,7 +28,7 @@ type TripView struct {
 }
 
 func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView, error) {
-	trip, err := s.trips.GetByID(ctx, query.TripID)
+	trip, err := s.tripRepository.GetByID(ctx, query.TripID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return TripView{}, NotFound(fmt.Sprintf("поездка не найдена: %s", query.TripID))
 	}
