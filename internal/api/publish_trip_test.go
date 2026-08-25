@@ -15,121 +15,123 @@ import (
 )
 
 func TestServer_PublishTrip(t *testing.T) {
-	truncateTestTables(t)
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 
-	tripID, driverID := insertTrip(t, "draft")
+		tripID, driverID := insertTrip(t, "draft")
 
-	publishPayload := api.PublishTripRequest{
-		DriverID: driverID.String(),
-	}
-
-	publishResp := publishTrip(t, tripID, publishPayload)
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
+		publishPayload := api.PublishTripRequest{
+			DriverID: driverID.String(),
 		}
-	}()
 
-	require.Equal(t, http.StatusOK, publishResp.StatusCode)
+		publishResp := publishTrip(t, tripID, publishPayload)
+		defer func() {
+			if err := publishResp.Body.Close(); err != nil {
+				t.Errorf("close publish response body: %v", err)
+			}
+		}()
 
-	tripGot := decodePublishTripResponse(t, publishResp)
+		require.Equal(t, http.StatusOK, publishResp.StatusCode)
 
-	require.Equal(t, tripID.String(), tripGot.ID)
-	require.Equal(t, driverID.String(), tripGot.DriverID)
-	require.Equal(t, "published", tripGot.Status)
-	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
-}
+		tripGot := decodePublishTripResponse(t, publishResp)
 
-func TestServer_PublishTrip_ForbiddenWhenDriverMismatch(t *testing.T) {
-	truncateTestTables(t)
-
-	tripID, _ := insertTrip(t, "draft")
-	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-		DriverID: uuid.NewString(),
+		require.Equal(t, tripID.String(), tripGot.ID)
+		require.Equal(t, driverID.String(), tripGot.DriverID)
+		require.Equal(t, "published", tripGot.Status)
+		require.Equal(t, 1, countTripPublishedEvents(t, tripID))
 	})
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
-		}
-	}()
 
-	require.Equal(t, http.StatusForbidden, publishResp.StatusCode)
-	require.Equal(t, "draft", getTripStatus(t, tripID))
-	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
-}
+	t.Run("forbidden when driver mismatch", func(t *testing.T) {
+		t.Parallel()
 
-func TestServer_PublishTrip_NotFound(t *testing.T) {
-	truncateTestTables(t)
+		tripID, _ := insertTrip(t, "draft")
+		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+			DriverID: uuid.NewString(),
+		})
+		defer func() {
+			if err := publishResp.Body.Close(); err != nil {
+				t.Errorf("close publish response body: %v", err)
+			}
+		}()
 
-	tripID := uuid.New()
-	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-		DriverID: uuid.NewString(),
+		require.Equal(t, http.StatusForbidden, publishResp.StatusCode)
+		require.Equal(t, "draft", getTripStatus(t, tripID))
+		require.Equal(t, 0, countTripPublishedEvents(t, tripID))
 	})
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
-		}
-	}()
 
-	require.Equal(t, http.StatusNotFound, publishResp.StatusCode)
-	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
-}
+	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 
-func TestServer_PublishTrip_ConflictWhenStatusDoesNotAllowPublishing(t *testing.T) {
-	truncateTestTables(t)
+		tripID := uuid.New()
+		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+			DriverID: uuid.NewString(),
+		})
+		defer func() {
+			if err := publishResp.Body.Close(); err != nil {
+				t.Errorf("close publish response body: %v", err)
+			}
+		}()
 
-	tripID, driverID := insertTrip(t, "canceled")
-	publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-		DriverID: driverID.String(),
+		require.Equal(t, http.StatusNotFound, publishResp.StatusCode)
+		require.Equal(t, 0, countTripPublishedEvents(t, tripID))
 	})
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
+
+	t.Run("conflict when status does not allow publishing", func(t *testing.T) {
+		t.Parallel()
+
+		tripID, driverID := insertTrip(t, "canceled")
+		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
+			DriverID: driverID.String(),
+		})
+		defer func() {
+			if err := publishResp.Body.Close(); err != nil {
+				t.Errorf("close publish response body: %v", err)
+			}
+		}()
+
+		require.Equal(t, http.StatusConflict, publishResp.StatusCode)
+		require.Equal(t, "canceled", getTripStatus(t, tripID))
+		require.Equal(t, 0, countTripPublishedEvents(t, tripID))
+	})
+
+	t.Run("already published", func(t *testing.T) {
+		t.Parallel()
+
+		tripID, driverID := insertTrip(t, "published")
+
+		_, err := testDB.Exec(
+			`INSERT INTO outbox_event(
+				id,
+				event_name,
+				aggregate_id,
+				payload
+			) VALUES ($1::uuid, 'trip_published', $2::uuid, jsonb_build_object('trip_id', $3::text))`,
+			uuid.NewString(),
+			tripID.String(),
+			tripID.String(),
+		)
+		require.NoError(t, err)
+
+		publishPayload := api.PublishTripRequest{
+			DriverID: driverID.String(),
 		}
-	}()
 
-	require.Equal(t, http.StatusConflict, publishResp.StatusCode)
-	require.Equal(t, "canceled", getTripStatus(t, tripID))
-	require.Equal(t, 0, countTripPublishedEvents(t, tripID))
-}
+		publishResp := publishTrip(t, tripID, publishPayload)
+		defer func() {
+			if err := publishResp.Body.Close(); err != nil {
+				t.Errorf("close publish response body: %v", err)
+			}
+		}()
 
-func TestServer_PublishTrip_AlreadyPublished(t *testing.T) {
-	truncateTestTables(t)
+		require.Equal(t, http.StatusOK, publishResp.StatusCode)
+		tripGot := decodePublishTripResponse(t, publishResp)
 
-	tripID, driverID := insertTrip(t, "published")
-
-	_, err := testDB.Exec(
-		`INSERT INTO outbox_event(
-			id,
-			event_name,
-			aggregate_id,
-			payload
-		) VALUES ($1::uuid, 'trip_published', $2::uuid, jsonb_build_object('trip_id', $3::text))`,
-		uuid.NewString(),
-		tripID.String(),
-		tripID.String(),
-	)
-	require.NoError(t, err)
-
-	publishPayload := api.PublishTripRequest{
-		DriverID: driverID.String(),
-	}
-
-	publishResp := publishTrip(t, tripID, publishPayload)
-	defer func() {
-		if err := publishResp.Body.Close(); err != nil {
-			t.Errorf("close publish response body: %v", err)
-		}
-	}()
-
-	require.Equal(t, http.StatusOK, publishResp.StatusCode)
-	tripGot := decodePublishTripResponse(t, publishResp)
-
-	require.Equal(t, tripID.String(), tripGot.ID)
-	require.Equal(t, driverID.String(), tripGot.DriverID)
-	require.Equal(t, "published", tripGot.Status)
-	require.Equal(t, "published", getTripStatus(t, tripID))
-	require.Equal(t, 1, countTripPublishedEvents(t, tripID))
+		require.Equal(t, tripID.String(), tripGot.ID)
+		require.Equal(t, driverID.String(), tripGot.DriverID)
+		require.Equal(t, "published", tripGot.Status)
+		require.Equal(t, "published", getTripStatus(t, tripID))
+		require.Equal(t, 1, countTripPublishedEvents(t, tripID))
+	})
 }
 
 func publishTrip(t *testing.T, tripID uuid.UUID, payload api.PublishTripRequest) *http.Response {

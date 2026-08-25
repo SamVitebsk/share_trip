@@ -15,8 +15,6 @@ import (
 
 func TestServer_CreateTrip(t *testing.T) {
 	t.Run("success - создание поездки", func(t *testing.T) {
-		truncateTestTables(t)
-
 		driverID := uuid.NewString()
 		payload := api.CreateTripRequest{
 			DriverID:      driverID,

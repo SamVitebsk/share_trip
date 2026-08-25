@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -119,13 +118,4 @@ func waitReady(db *sql.DB) {
 	}
 
 	log.Fatalf("database is not ready after timeout")
-}
-
-func truncateTestTables(t *testing.T) {
-	t.Helper()
-
-	_, err := testDB.Exec(
-		`TRUNCATE TABLE outbox_event, trip_history, trips RESTART IDENTITY CASCADE`,
-	)
-	require.NoError(t, err)
 }
