@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"share_trip/internal/app"
 
 	config "share_trip/configs"
 	"share_trip/internal/api"
+	"share_trip/internal/api/middleware"
 	"share_trip/internal/service"
 	"share_trip/internal/storage/postgres"
 	"share_trip/internal/storage/repository"
@@ -14,6 +16,16 @@ import (
 )
 
 func main() {
+	logger, logFile, err := app.NewLogger()
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err := logFile.Close(); err != nil {
+			logger.Error("закрытие файла логов не выполнено", "error", err)
+		}
+	}()
+
 	ctx := context.Background()
 	cfg := config.PostgresConfig{
 		Host:     config.Env("DB_HOST", "localhost"),
@@ -42,10 +54,13 @@ func main() {
 
 	server := api.NewServer(tripHandler, readyHandler)
 
-	app := fiber.New()
-	server.Route(app.Group("/api"))
+	fiberApp := fiber.New()
 
-	err = app.Listen(config.Env("SERVER_PORT", ":9090"))
+	fiberApp.Use(middleware.Correlation(logger))
+
+	server.Route(fiberApp.Group("/api"))
+
+	err = fiberApp.Listen(config.Env("SERVER_PORT", ":9090"))
 	if err != nil {
 		log.Fatal(err)
 	}

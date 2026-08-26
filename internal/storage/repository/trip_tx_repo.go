@@ -15,7 +15,7 @@ func newTripRepoTx(tx pgx.Tx) *TripRepoTx {
 }
 
 func (r *RepoPg) WithinTripTx(ctx context.Context, fn func(ctx context.Context, trips *TripRepoTx) error) error {
-	return tx(ctx, r.pool, func(txBegin pgx.Tx) error {
+	return tx(ctx, r.pool, func(ctx context.Context, txBegin pgx.Tx) error {
 		return fn(ctx, newTripRepoTx(txBegin))
 	})
 }

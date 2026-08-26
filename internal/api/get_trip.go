@@ -2,6 +2,8 @@ package api
 
 import (
 	"errors"
+	"log/slog"
+	"share_trip/internal/observability/logctx"
 	"share_trip/internal/service"
 
 	"github.com/gofiber/fiber/v2"
@@ -24,15 +26,42 @@ type TripResponse struct {
 }
 
 func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	logger := logctx.Logger(ctx).With(
+		slog.String("handler", "GetTrip"),
+	)
+
 	query, err := getTripQueryFromPath(c.Params("tripId"))
 	if err != nil {
+		logger.Warn(
+			"получение поездки не выполнено: некорректный запрос",
+			slog.Any("error", err),
+		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
 
-	trip, err := h.tripService.GetTrip(c.Context(), query)
+	logger = logger.With(
+		slog.String("trip_id", query.TripID.String()),
+	)
+	ctx = logctx.WithLogger(ctx, logger)
+	c.SetUserContext(ctx)
+
+	logger.Info("запрос на получение поездки принят")
+
+	trip, err := h.tripService.GetTrip(ctx, query)
 	if err != nil {
+		logger.Error(
+			"получение поездки не выполнено",
+			slog.Any("error", err),
+		)
 		return writeServiceError(c, err)
 	}
+
+	logger.Info(
+		"получение поездки завершено",
+		slog.String("driver_id", trip.DriverID.String()),
+		slog.String("status", string(trip.Status)),
+	)
 
 	return c.Status(fiber.StatusOK).JSON(tripResponseFromView(trip))
 }

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"log/slog"
+	"share_trip/internal/observability/logctx"
 	"share_trip/internal/service"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,20 +25,51 @@ type PublishTripResponse struct {
 }
 
 func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
+	ctx := c.UserContext()
+	logger := logctx.Logger(ctx).With(
+		slog.String("handler", "PublishTrip"),
+	)
+
 	var req PublishTripRequest
 	if err := c.BodyParser(&req); err != nil {
+		logger.Warn(
+			"публикация поездки не выполнена: некорректный JSON в теле запроса",
+			slog.Any("error", err),
+		)
 		return writeError(c, ErrorCodeValidation, "тело запроса должно быть валидным JSON")
 	}
 
 	publishTripCommand, err := parsePublishTripCommandFromRequest(c.Params("tripId"), req)
 	if err != nil {
+		logger.Warn(
+			"публикация поездки не выполнена: некорректный запрос",
+			slog.Any("error", err),
+		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
 
-	result, err := h.tripService.PublishTrip(c.Context(), *publishTripCommand)
+	logger = logger.With(
+		slog.String("trip_id", publishTripCommand.TripID.String()),
+		slog.String("driver_id", publishTripCommand.DriverID.String()),
+	)
+	ctx = logctx.WithLogger(ctx, logger)
+	c.SetUserContext(ctx)
+
+	logger.Info("запрос на публикацию поездки принят")
+
+	result, err := h.tripService.PublishTrip(ctx, *publishTripCommand)
 	if err != nil {
+		logger.Error(
+			"публикация поездки не выполнена",
+			slog.Any("error", err),
+		)
 		return writeServiceError(c, err)
 	}
+
+	logger.Info(
+		"публикация поездки завершена",
+		slog.String("status", string(result.Status)),
+	)
 
 	return c.Status(fiber.StatusOK).JSON(toPublishTripResponse(result))
 }

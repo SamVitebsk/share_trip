@@ -2,10 +2,12 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
 	"share_trip/internal/domain"
+	"share_trip/internal/observability/logctx"
 
 	"github.com/google/uuid"
 )
@@ -23,9 +25,20 @@ type CreateTripResult struct {
 }
 
 func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (CreateTripResult, error) {
+	logger := logctx.Logger(ctx).With(
+		slog.String("service", "TripService"),
+		slog.String("operation", "CreateTrip"),
+	)
+
+	logger.Info("создание поездки в service начато")
+
 	now := time.Now()
 	cmd = normalizeCreateTripCommand(cmd)
 	if err := validateCreateTripCommand(cmd, now); err != nil {
+		logger.Warn(
+			"создание поездки не выполнено: ошибка валидации",
+			slog.Any("error", err),
+		)
 		return CreateTripResult{}, err
 	}
 
@@ -46,11 +59,23 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 		ToStatus:   trip.Status,
 		CreatedAt:  now,
 	}
+	ctx = logctx.WithLogger(ctx, logctx.Logger(ctx).With(
+		slog.String("trip_id", trip.ID.String()),
+	))
 
 	err := s.tripRepository.Create(ctx, trip, history)
 	if err != nil {
+		logger.Error(
+			"создание поездки не выполнено: ошибка repository",
+			slog.Any("error", err),
+		)
 		return CreateTripResult{}, err
 	}
+
+	logger.Info(
+		"создание поездки в service завершено",
+		slog.String("trip_id", trip.ID.String()),
+	)
 
 	return CreateTripResult{TripID: trip.ID}, nil
 }
