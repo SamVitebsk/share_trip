@@ -4,12 +4,22 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"share_trip/internal/observability/logctx"
 	"share_trip/internal/outbox"
 )
 
 func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) error {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("outbox_create_event", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("outbox_create_event", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	eventEntity := toOutboxEventEntity(event)
 	logger := logctx.Logger(ctx).With(
 		slog.String("layer", "repository"),
@@ -36,6 +46,7 @@ func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) 
 		string(eventEntity.Payload),
 	)
 	if err != nil {
+		result = repositoryMetricResultFromError(err)
 		logger.ErrorContext(
 			ctx,
 			"insert outbox-события не выполнен",

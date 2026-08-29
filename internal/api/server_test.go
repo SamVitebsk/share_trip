@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"share_trip/internal/api"
+	"share_trip/internal/observability/metrics"
 	"share_trip/internal/service"
 	"share_trip/internal/storage/repository"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
@@ -70,13 +72,15 @@ func TestMain(m *testing.M) {
 		log.Fatalf("create pgx pool: %v", err)
 	}
 
-	repo := repository.NewRepoPg(testPool)
+	registry := prometheus.NewRegistry()
+	appMetrics := metrics.New(registry)
+	repo := repository.NewRepoPg(testPool, appMetrics)
 	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
 		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
 			return fn(ctx, trips)
 		})
 	}
-	tripService := service.NewTripService(repo, runTripTx)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 	server := api.NewServer(tripHandler, readyHandler)

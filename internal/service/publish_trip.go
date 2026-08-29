@@ -32,6 +32,15 @@ type PublishTripResult struct {
 }
 
 func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (*PublishTripResult, error) {
+	started := time.Now()
+	result := metricResultSuccess
+
+	defer func() {
+		s.metrics.TripPublishTotal.WithLabelValues(result).Inc()
+		s.metrics.TripPublishDuration.WithLabelValues(result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("service", "TripService"),
 		slog.String("operation", "PublishTrip"),
@@ -40,6 +49,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	logger.InfoContext(ctx, "публикация поездки в service начата")
 
 	if err := validatePublishTripCommand(cmd); err != nil {
+		result = metricResultFromError(err)
 		logger.WarnContext(
 			ctx,
 			"публикация поездки не выполнена: ошибка валидации",
@@ -144,12 +154,14 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 		return nil
 	})
 	if err != nil {
+		tripErr := publishTripError(cmd.TripID, err)
+		result = metricResultFromError(tripErr)
 		logger.ErrorContext(
 			ctx,
 			"публикация поездки в service не выполнена",
 			slog.Any("error", err),
 		)
-		return nil, publishTripError(cmd.TripID, err)
+		return nil, tripErr
 	}
 
 	publishTripResult := toPublishTripResult(publishedTrip)

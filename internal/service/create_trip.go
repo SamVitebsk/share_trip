@@ -25,6 +25,15 @@ type CreateTripResult struct {
 }
 
 func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (CreateTripResult, error) {
+	started := time.Now()
+	result := metricResultSuccess
+
+	defer func() {
+		s.metrics.TripCreateTotal.WithLabelValues(result).Inc()
+		s.metrics.TripCreateDuration.WithLabelValues(result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("service", "TripService"),
 		slog.String("operation", "CreateTrip"),
@@ -35,6 +44,7 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 	now := time.Now()
 	cmd = normalizeCreateTripCommand(cmd)
 	if err := validateCreateTripCommand(cmd, now); err != nil {
+		result = metricResultFromError(err)
 		logger.Warn(
 			"создание поездки не выполнено: ошибка валидации",
 			slog.Any("error", err),
@@ -65,6 +75,7 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 
 	err := s.tripRepository.Create(ctx, trip, history)
 	if err != nil {
+		result = metricResultFromError(err)
 		logger.Error(
 			"создание поездки не выполнено: ошибка repository",
 			slog.Any("error", err),

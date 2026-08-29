@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"share_trip/internal/app"
+	"share_trip/internal/observability/metrics"
 
 	config "share_trip/configs"
 	"share_trip/internal/api"
@@ -13,6 +14,9 @@ import (
 	"share_trip/internal/storage/repository"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -42,13 +46,16 @@ func main() {
 	}
 	defer pool.Close()
 
-	repo := repository.NewRepoPg(pool)
+	registry := prometheus.NewRegistry()
+	appMetrics := metrics.New(registry)
+
+	repo := repository.NewRepoPg(pool, appMetrics)
 	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
 		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
 			return fn(ctx, trips)
 		})
 	}
-	tripService := service.NewTripService(repo, runTripTx)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 
@@ -57,7 +64,9 @@ func main() {
 	fiberApp := fiber.New()
 
 	fiberApp.Use(middleware.Correlation(logger))
+	fiberApp.Use(middleware.NewHTTPMetricsMiddleware(appMetrics))
 
+	fiberApp.Get("/metrics", adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
 	server.Route(fiberApp.Group("/api"))
 
 	err = fiberApp.Listen(config.Env("SERVER_PORT", ":9090"))

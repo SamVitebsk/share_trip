@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"share_trip/internal/domain"
 	"share_trip/internal/observability/logctx"
@@ -19,7 +20,16 @@ type executor interface {
 }
 
 func (r *RepoPg) Create(ctx context.Context, trip domain.Trip, history domain.TripHistory) error {
-	return tx(ctx, r.pool, func(ctx context.Context, txBegin pgx.Tx) error {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("trip_create", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("trip_create", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
+	err := tx(ctx, r.pool, func(ctx context.Context, txBegin pgx.Tx) error {
 		tripEntity := toTripEntity(trip)
 		if err := insertTrip(ctx, txBegin, tripEntity); err != nil {
 			return err
@@ -32,6 +42,12 @@ func (r *RepoPg) Create(ctx context.Context, trip domain.Trip, history domain.Tr
 
 		return nil
 	})
+	if err != nil {
+		result = repositoryMetricResultFromError(err)
+		return err
+	}
+
+	return nil
 }
 
 func insertTrip(ctx context.Context, exec executor, tripEntity tripEntity) error {
@@ -118,6 +134,15 @@ func insertTripHistory(ctx context.Context, exec executor, historyEntity tripHis
 }
 
 func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, error) {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("trip_get_by_id", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("trip_get_by_id", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("layer", "repository"),
 		slog.String("repository", "TripRepository"),
@@ -144,6 +169,7 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
 		),
 	)
 	if err != nil {
+		result = repositoryMetricResultFromError(err)
 		if errors.Is(err, ErrNotFound) {
 			logger.WarnContext(
 				ctx,
@@ -172,6 +198,15 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
 }
 
 func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, error) {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("trip_get_for_update", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("trip_get_for_update", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("layer", "repository"),
 		slog.String("repository", "TripRepository"),
@@ -199,6 +234,7 @@ func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (do
 		),
 	)
 	if err != nil {
+		result = repositoryMetricResultFromError(err)
 		logger.ErrorContext(
 			ctx,
 			"select поездки для обновления не выполнен",
@@ -217,6 +253,15 @@ func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (do
 }
 
 func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status domain.TripStatus) (domain.Trip, error) {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("trip_update_status", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("trip_update_status", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("layer", "repository"),
 		slog.String("repository", "TripRepository"),
@@ -244,6 +289,7 @@ func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status 
 		string(status),
 	))
 	if err != nil {
+		result = repositoryMetricResultFromError(err)
 		logger.ErrorContext(
 			ctx,
 			"update статуса поездки не выполнен",
@@ -258,8 +304,18 @@ func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status 
 }
 
 func (r *TripRepoTx) CreateHistory(ctx context.Context, history domain.TripHistory) error {
+	started := time.Now()
+	result := repositoryMetricResultSuccess
+
+	defer func() {
+		r.metrics.RepositoryQueryTotal.WithLabelValues("trip_create_history", result).Inc()
+		r.metrics.RepositoryQueryDuration.WithLabelValues("trip_create_history", result).
+			Observe(time.Since(started).Seconds())
+	}()
+
 	historyEntity := toTripHistoryEntity(history)
 	if err := insertTripHistory(ctx, r.tx, historyEntity); err != nil {
+		result = repositoryMetricResultFromError(err)
 		return fmt.Errorf("append trip history: %w", err)
 	}
 
