@@ -13,6 +13,9 @@ import (
 	"share_trip/internal/storage/repository"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type PublishTripCommand struct {
@@ -32,6 +35,16 @@ type PublishTripResult struct {
 }
 
 func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (*PublishTripResult, error) {
+	tracer := otel.Tracer("TripService")
+	ctx, span := tracer.Start(ctx, "TripService.PublishTrip")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("operation", "publish_trip"),
+		attribute.String("trip_id", cmd.TripID.String()),
+		attribute.String("driver_id", cmd.DriverID.String()),
+	)
+
 	started := time.Now()
 	result := metricResultSuccess
 
@@ -50,6 +63,8 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 
 	if err := validatePublishTripCommand(cmd); err != nil {
 		result = metricResultFromError(err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.WarnContext(
 			ctx,
 			"публикация поездки не выполнена: ошибка валидации",
@@ -73,21 +88,34 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 		}
 
 		fromStatus := trip.Status
+		span.SetAttributes(attribute.String("from_status", string(fromStatus)))
 		logger.InfoContext(
 			ctx,
 			"проверка доменных правил публикации начата",
 			slog.String("from_status", string(fromStatus)),
 		)
 
+		domainCtx, domainSpan := tracer.Start(ctx, "Trip.Publish")
+		domainSpan.SetAttributes(
+			attribute.String("trip_id", trip.ID.String()),
+			attribute.String("driver_id", cmd.DriverID.String()),
+			attribute.String("from_status", string(fromStatus)),
+		)
 		if err := trip.Publish(cmd.DriverID); err != nil {
+			domainSpan.RecordError(err)
+			domainSpan.SetStatus(codes.Error, err.Error())
+			domainSpan.End()
 			logger.WarnContext(
-				ctx,
+				domainCtx,
 				"публикация поездки не выполнена: доменное правило не пройдено",
 				slog.String("from_status", string(fromStatus)),
 				slog.Any("error", err),
 			)
 			return publishTripError(cmd.TripID, err)
 		}
+		domainSpan.SetAttributes(attribute.String("to_status", string(trip.Status)))
+		domainSpan.End()
+		span.SetAttributes(attribute.String("to_status", string(trip.Status)))
 
 		if fromStatus == trip.Status {
 			logger.InfoContext(
@@ -156,6 +184,8 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	if err != nil {
 		tripErr := publishTripError(cmd.TripID, err)
 		result = metricResultFromError(tripErr)
+		span.RecordError(tripErr)
+		span.SetStatus(codes.Error, tripErr.Error())
 		logger.ErrorContext(
 			ctx,
 			"публикация поездки в service не выполнена",
@@ -171,6 +201,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 		"публикация поездки в service завершена",
 		slog.String("status", string(publishTripResult.Status)),
 	)
+	span.SetAttributes(attribute.String("status", string(publishTripResult.Status)))
 
 	return &publishTripResult, nil
 }

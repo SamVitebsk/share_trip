@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"share_trip/internal/app"
 	"share_trip/internal/observability/metrics"
+	"share_trip/internal/observability/tracing"
+	"time"
 
 	config "share_trip/configs"
 	"share_trip/internal/api"
@@ -31,6 +34,29 @@ func main() {
 	}()
 
 	ctx := context.Background()
+
+	tracerProvider, err := tracing.NewProvider(ctx, tracing.Config{
+		ServiceName:    "share-trip",
+		ServiceVersion: "1.0.0",
+		Environment:    "local",
+		Endpoint:       "localhost:4319",
+	})
+	if err != nil {
+		logger.Error("инициализация трассировки не выполнена", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(
+			context.Background(),
+			5*time.Second,
+		)
+		defer cancel()
+
+		if err := tracerProvider.Shutdown(shutdownCtx); err != nil {
+			logger.Error("shutdown tracing failed", "error", err)
+		}
+	}()
+
 	cfg := config.PostgresConfig{
 		Host:     config.Env("DB_HOST", "localhost"),
 		Port:     config.EnvInt("DB_PORT", 6543),
@@ -64,6 +90,7 @@ func main() {
 	fiberApp := fiber.New()
 
 	fiberApp.Use(middleware.Correlation(logger))
+	fiberApp.Use(tracing.NewFiberMiddleware())
 	fiberApp.Use(middleware.NewHTTPMetricsMiddleware(appMetrics))
 
 	fiberApp.Get("/metrics", adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))

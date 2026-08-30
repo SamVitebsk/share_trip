@@ -2,11 +2,15 @@ package api
 
 import (
 	"log/slog"
+
 	"share_trip/internal/observability/logctx"
 	"share_trip/internal/service"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type PublishTripRequest struct {
@@ -30,8 +34,18 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 		slog.String("handler", "PublishTrip"),
 	)
 
+	tracer := otel.Tracer("trip-api")
+	ctx, span := tracer.Start(ctx, "PublishTripHandler")
+	defer span.End()
+
+	c.SetUserContext(ctx)
+	c.Set("trace-id", span.SpanContext().TraceID().String())
+	span.SetAttributes(attribute.String("operation", "publish_trip"))
+
 	var req PublishTripRequest
 	if err := c.BodyParser(&req); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"публикация поездки не выполнена: некорректный JSON в теле запроса",
 			slog.Any("error", err),
@@ -41,6 +55,8 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 
 	publishTripCommand, err := parsePublishTripCommandFromRequest(c.Params("tripId"), req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"публикация поездки не выполнена: некорректный запрос",
 			slog.Any("error", err),
@@ -52,6 +68,10 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 		slog.String("trip_id", publishTripCommand.TripID.String()),
 		slog.String("driver_id", publishTripCommand.DriverID.String()),
 	)
+	span.SetAttributes(
+		attribute.String("trip_id", publishTripCommand.TripID.String()),
+		attribute.String("driver_id", publishTripCommand.DriverID.String()),
+	)
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
@@ -59,6 +79,8 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 
 	result, err := h.tripService.PublishTrip(ctx, *publishTripCommand)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Error(
 			"публикация поездки не выполнена",
 			slog.Any("error", err),
@@ -70,6 +92,7 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 		"публикация поездки завершена",
 		slog.String("status", string(result.Status)),
 	)
+	span.SetAttributes(attribute.String("status", string(result.Status)))
 
 	return c.Status(fiber.StatusOK).JSON(toPublishTripResponse(result))
 }

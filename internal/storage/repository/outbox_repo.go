@@ -8,9 +8,17 @@ import (
 
 	"share_trip/internal/observability/logctx"
 	"share_trip/internal/outbox"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) error {
+	tracer := otel.Tracer("OutboxRepository")
+	ctx, span := tracer.Start(ctx, "OutboxRepository.CreateOutboxEvent")
+	defer span.End()
+
 	started := time.Now()
 	result := repositoryMetricResultSuccess
 
@@ -21,6 +29,14 @@ func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) 
 	}()
 
 	eventEntity := toOutboxEventEntity(event)
+	span.SetAttributes(
+		attribute.String("operation", "outbox_create_event"),
+		attribute.String("outbox_event_id", eventEntity.ID.String()),
+		attribute.String("event_name", eventEntity.EventName),
+		attribute.String("aggregate_id", eventEntity.AggregateID.String()),
+		attribute.String("trip_id", eventEntity.AggregateID.String()),
+	)
+
 	logger := logctx.Logger(ctx).With(
 		slog.String("layer", "repository"),
 		slog.String("repository", "OutboxRepository"),
@@ -47,6 +63,8 @@ func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) 
 	)
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.ErrorContext(
 			ctx,
 			"insert outbox-события не выполнен",

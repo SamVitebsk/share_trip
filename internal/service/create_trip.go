@@ -10,6 +10,9 @@ import (
 	"share_trip/internal/observability/logctx"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type CreateTripCommand struct {
@@ -25,6 +28,15 @@ type CreateTripResult struct {
 }
 
 func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (CreateTripResult, error) {
+	tracer := otel.Tracer("TripService")
+	ctx, span := tracer.Start(ctx, "TripService.CreateTrip")
+	defer span.End()
+
+	span.SetAttributes(
+		attribute.String("operation", "create_trip"),
+		attribute.String("driver_id", cmd.DriverID.String()),
+	)
+
 	started := time.Now()
 	result := metricResultSuccess
 
@@ -45,6 +57,8 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 	cmd = normalizeCreateTripCommand(cmd)
 	if err := validateCreateTripCommand(cmd, now); err != nil {
 		result = metricResultFromError(err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"создание поездки не выполнено: ошибка валидации",
 			slog.Any("error", err),
@@ -69,13 +83,22 @@ func (s *TripService) CreateTrip(ctx context.Context, cmd CreateTripCommand) (Cr
 		ToStatus:   trip.Status,
 		CreatedAt:  now,
 	}
+	span.SetAttributes(
+		attribute.String("trip_id", trip.ID.String()),
+		attribute.String("driver_id", trip.DriverID.String()),
+		attribute.String("status", string(trip.Status)),
+	)
+
 	ctx = logctx.WithLogger(ctx, logctx.Logger(ctx).With(
 		slog.String("trip_id", trip.ID.String()),
+		slog.String("driver_id", trip.DriverID.String()),
 	))
 
 	err := s.tripRepository.Create(ctx, trip, history)
 	if err != nil {
 		result = metricResultFromError(err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Error(
 			"создание поездки не выполнено: ошибка repository",
 			slog.Any("error", err),

@@ -12,6 +12,9 @@ import (
 	"share_trip/internal/storage/repository"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type GetTripQuery struct {
@@ -35,18 +38,31 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 		slog.String("operation", "GetTrip"),
 	)
 
+	tracer := otel.Tracer("TripUsecase")
+	ctx, span := tracer.Start(ctx, "TripUsecase.GetTrip")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("operation", "get_trip"),
+		attribute.String("trip_id", query.TripID.String()),
+	)
+
 	logger.InfoContext(ctx, "получение поездки в service начато")
 
 	trip, err := s.tripRepository.GetByID(ctx, query.TripID)
 	if errors.Is(err, repository.ErrNotFound) {
+		tripErr := NotFound(fmt.Sprintf("поездка не найдена: %s", query.TripID))
+		span.RecordError(tripErr)
+		span.SetStatus(codes.Error, tripErr.Error())
 		logger.WarnContext(
 			ctx,
 			"получение поездки не выполнено: поездка не найдена",
 			slog.Any("error", err),
 		)
-		return TripView{}, NotFound(fmt.Sprintf("поездка не найдена: %s", query.TripID))
+		return TripView{}, tripErr
 	}
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.ErrorContext(
 			ctx,
 			"получение поездки не выполнено: ошибка repository",
@@ -62,6 +78,10 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 		"получение поездки в service завершено",
 		slog.String("driver_id", tripView.DriverID.String()),
 		slog.String("status", string(tripView.Status)),
+	)
+	span.SetAttributes(
+		attribute.String("driver_id", tripView.DriverID.String()),
+		attribute.String("status", string(tripView.Status)),
 	)
 
 	return tripView, nil

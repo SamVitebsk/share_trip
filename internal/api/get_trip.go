@@ -8,6 +8,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var (
@@ -31,14 +34,26 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 		slog.String("handler", "GetTrip"),
 	)
 
+	tracer := otel.Tracer("trip-api")
+
+	ctx, span := tracer.Start(c.UserContext(), "GetTripHandler")
+	defer span.End()
+
+	c.SetUserContext(ctx)
+	c.Set("trace-id", span.SpanContext().TraceID().String())
+	span.SetAttributes(attribute.String("operation", "get_trip"))
+
 	query, err := getTripQueryFromPath(c.Params("tripId"))
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"получение поездки не выполнено: некорректный запрос",
 			slog.Any("error", err),
 		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
+	span.SetAttributes(attribute.String("trip_id", query.TripID.String()))
 
 	logger = logger.With(
 		slog.String("trip_id", query.TripID.String()),
@@ -50,6 +65,8 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 
 	trip, err := h.tripService.GetTrip(ctx, query)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Error(
 			"получение поездки не выполнено",
 			slog.Any("error", err),
@@ -61,6 +78,11 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 		"получение поездки завершено",
 		slog.String("driver_id", trip.DriverID.String()),
 		slog.String("status", string(trip.Status)),
+	)
+	span.SetAttributes(
+		attribute.String("trip_id", trip.ID.String()),
+		attribute.String("driver_id", trip.DriverID.String()),
+		attribute.String("status", string(trip.Status)),
 	)
 
 	return c.Status(fiber.StatusOK).JSON(tripResponseFromView(trip))

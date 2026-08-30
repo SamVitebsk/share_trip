@@ -3,10 +3,14 @@ package api
 import (
 	"errors"
 	"log/slog"
+
 	"share_trip/internal/observability/logctx"
 	"share_trip/internal/service"
 
 	"github.com/gofiber/fiber/v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var (
@@ -32,8 +36,18 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		slog.String("handler", "CreateTrip"),
 	)
 
+	tracer := otel.Tracer("trip-api")
+	ctx, span := tracer.Start(ctx, "CreateTripHandler")
+	defer span.End()
+
+	c.SetUserContext(ctx)
+	c.Set("trace-id", span.SpanContext().TraceID().String())
+	span.SetAttributes(attribute.String("operation", "create_trip"))
+
 	var req CreateTripRequest
 	if err := c.BodyParser(&req); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"создание поездки не выполнено: некорректный JSON в теле запроса",
 			slog.Any("error", err),
@@ -43,12 +57,15 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 
 	createTripCommand, err := createTripCommandFromRequest(req)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
 			"создание поездки не выполнено: некорректный запрос",
 			slog.Any("error", err),
 		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
+	span.SetAttributes(attribute.String("driver_id", createTripCommand.DriverID.String()))
 
 	logger = logger.With(
 		slog.String("driver_id", createTripCommand.DriverID.String()),
@@ -60,6 +77,8 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 
 	result, err := h.tripService.CreateTrip(ctx, createTripCommand)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		logger.Error(
 			"создание поездки не выполнено",
 			slog.Any("error", err),
@@ -70,6 +89,11 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	logger.Info(
 		"создание поездки завершено",
 		slog.String("trip_id", result.TripID.String()),
+	)
+	span.SetAttributes(
+		attribute.String("trip_id", result.TripID.String()),
+		attribute.String("driver_id", createTripCommand.DriverID.String()),
+		attribute.String("status", "created"),
 	)
 
 	return c.Status(fiber.StatusCreated).JSON(createTripResponseFromResult(result))
