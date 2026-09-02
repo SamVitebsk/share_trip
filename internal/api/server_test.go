@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"share_trip/internal/api"
+	"share_trip/internal/api/middleware"
 	"share_trip/internal/observability/metrics"
 	"share_trip/internal/service"
 	"share_trip/internal/storage/repository"
@@ -13,12 +14,16 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 )
+
+const testKeycloakClientID = "sharetrip-api"
+const testAuthSubjectHeader = "X-Test-Auth-Subject"
 
 var (
 	testCtx       context.Context
@@ -86,7 +91,7 @@ func TestMain(m *testing.M) {
 	server := api.NewServer(tripHandler, readyHandler)
 
 	testApp = fiber.New()
-	server.Route(testApp.Group("/api"))
+	server.Route(testApp.Group("/api"), testAuthMiddleware, testKeycloakClientID)
 
 	code := m.Run()
 
@@ -101,6 +106,26 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+func testAuthMiddleware(c *fiber.Ctx) error {
+	subject := c.Get(testAuthSubjectHeader)
+	if subject == "" {
+		subject = uuid.NewString()
+	}
+
+	c.Locals(middleware.KeycloakClaimsKey, &middleware.KeycloakClaims{
+		Subject: subject,
+		ResourceAccess: map[string]struct {
+			Roles []string `json:"roles"`
+		}{
+			testKeycloakClientID: {
+				Roles: []string{"client"},
+			},
+		},
+	})
+
+	return c.Next()
 }
 
 func waitReady(db *sql.DB) {

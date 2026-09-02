@@ -18,7 +18,8 @@ import (
 )
 
 type GetTripQuery struct {
-	TripID uuid.UUID
+	TripID   uuid.UUID
+	DriverID uuid.UUID
 }
 
 type TripView struct {
@@ -44,6 +45,7 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 	span.SetAttributes(
 		attribute.String("operation", "get_trip"),
 		attribute.String("trip_id", query.TripID.String()),
+		attribute.String("driver_id", query.DriverID.String()),
 	)
 
 	logger.InfoContext(ctx, "получение поездки в service начато")
@@ -69,6 +71,19 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 			slog.Any("error", err),
 		)
 		return TripView{}, err
+	}
+
+	if trip.DriverID != query.DriverID {
+		tripErr := Forbidden("доступ к поездке запрещен")
+		span.RecordError(tripErr)
+		span.SetStatus(codes.Error, tripErr.Error())
+		logger.WarnContext(
+			ctx,
+			"получение поездки не выполнено: поездка принадлежит другому водителю",
+			slog.String("driver_id", trip.DriverID.String()),
+			slog.String("request_driver_id", query.DriverID.String()),
+		)
+		return TripView{}, tripErr
 	}
 
 	tripView := tripViewFromDomain(trip)

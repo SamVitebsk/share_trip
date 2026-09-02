@@ -93,8 +93,17 @@ func main() {
 	fiberApp.Use(tracing.NewFiberMiddleware())
 	fiberApp.Use(middleware.NewHTTPMetricsMiddleware(appMetrics))
 
+	keycloakClientID := config.Env("KEYCLOAK_CLIENT_ID", "sharetrip-api")
+	keycloakAuthMiddleware := middleware.KeycloakRefreshTokenMiddleware(
+		middleware.KeycloakConfig{
+			Issuer:       config.Env("KEYCLOAK_ISSUER", "http://localhost:8087/realms/sharetrip"),
+			ClientID:     keycloakClientID,
+			ClientSecret: config.Env("KEYCLOAK_CLIENT_SECRET", "kcTclgACcVx4ozusKmvvihUqARRE4OnI"),
+		},
+	)
+
 	fiberApp.Get("/metrics", adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
-	server.Route(fiberApp.Group("/api"))
+	server.Route(fiberApp.Group("/api"), keycloakAuthMiddleware, keycloakClientID)
 
 	err = fiberApp.Listen(config.Env("SERVER_PORT", ":9090"))
 	if err != nil {

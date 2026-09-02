@@ -8,18 +8,17 @@ import (
 	"share_trip/internal/service"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 )
 
 var (
-	errInvalidDriverID      = errors.New("driverID имеет неверный формат")
 	errInvalidDepartureTime = errors.New("departureTime имеет неверный формат")
 )
 
 type CreateTripRequest struct {
-	DriverID      string `json:"driverId"`
 	FromPoint     string `json:"fromPoint"`
 	ToPoint       string `json:"toPoint"`
 	DepartureTime string `json:"departureTime"`
@@ -55,7 +54,18 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		return writeError(c, ErrorCodeValidation, "тело запроса должно быть валидным JSON")
 	}
 
-	createTripCommand, err := createTripCommandFromRequest(req)
+	driverID, err := driverIDFromClaims(c)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		logger.Warn(
+			"создание поездки не выполнено: данные пользователя не получены",
+			slog.Any("error", err),
+		)
+		return err
+	}
+
+	createTripCommand, err := createTripCommandFromRequest(req, driverID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -99,12 +109,7 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(createTripResponseFromResult(result))
 }
 
-func createTripCommandFromRequest(req CreateTripRequest) (service.CreateTripCommand, error) {
-	driverID, err := parseUUIDIfPresent(req.DriverID, errInvalidDriverID)
-	if err != nil {
-		return service.CreateTripCommand{}, err
-	}
-
+func createTripCommandFromRequest(req CreateTripRequest, driverID uuid.UUID) (service.CreateTripCommand, error) {
 	departureTime, err := parseRFC3339TimeIfPresent(req.DepartureTime, errInvalidDepartureTime)
 	if err != nil {
 		return service.CreateTripCommand{}, err

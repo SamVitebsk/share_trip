@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,11 +19,7 @@ func TestServer_PublishTrip(t *testing.T) {
 
 		tripID, driverID := insertTrip(t, "draft")
 
-		publishPayload := api.PublishTripRequest{
-			DriverID: driverID.String(),
-		}
-
-		publishResp := publishTrip(t, tripID, publishPayload)
+		publishResp := publishTrip(t, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -45,9 +40,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		t.Parallel()
 
 		tripID, _ := insertTrip(t, "draft")
-		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-			DriverID: uuid.NewString(),
-		})
+		publishResp := publishTrip(t, tripID, uuid.New())
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -63,9 +56,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		t.Parallel()
 
 		tripID := uuid.New()
-		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-			DriverID: uuid.NewString(),
-		})
+		publishResp := publishTrip(t, tripID, uuid.New())
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -80,9 +71,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		t.Parallel()
 
 		tripID, driverID := insertTrip(t, "canceled")
-		publishResp := publishTrip(t, tripID, api.PublishTripRequest{
-			DriverID: driverID.String(),
-		})
+		publishResp := publishTrip(t, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -112,11 +101,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		publishPayload := api.PublishTripRequest{
-			DriverID: driverID.String(),
-		}
-
-		publishResp := publishTrip(t, tripID, publishPayload)
+		publishResp := publishTrip(t, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -134,19 +119,16 @@ func TestServer_PublishTrip(t *testing.T) {
 	})
 }
 
-func publishTrip(t *testing.T, tripID uuid.UUID, payload api.PublishTripRequest) *http.Response {
+func publishTrip(t *testing.T, tripID uuid.UUID, driverID uuid.UUID) *http.Response {
 	t.Helper()
-
-	publishBody, err := json.Marshal(payload)
-	require.NoError(t, err)
 
 	publishReq, err := http.NewRequest(
 		http.MethodPost,
 		fmt.Sprintf("/api/trip/%s/publish", tripID),
-		bytes.NewReader(publishBody),
+		nil,
 	)
 	require.NoError(t, err)
-	publishReq.Header.Set("Content-Type", "application/json")
+	publishReq.Header.Set(testAuthSubjectHeader, driverID.String())
 
 	publishResp, err := testApp.Test(publishReq, -1)
 	require.NoError(t, err)

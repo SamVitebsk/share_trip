@@ -13,10 +13,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-type PublishTripRequest struct {
-	DriverID string `json:"driverId"`
-}
-
 type PublishTripResponse struct {
 	ID            string `json:"id"`
 	DriverID      string `json:"driverId"`
@@ -42,18 +38,18 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 	c.Set("trace-id", span.SpanContext().TraceID().String())
 	span.SetAttributes(attribute.String("operation", "publish_trip"))
 
-	var req PublishTripRequest
-	if err := c.BodyParser(&req); err != nil {
+	driverID, err := driverIDFromClaims(c)
+	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
-			"публикация поездки не выполнена: некорректный JSON в теле запроса",
+			"публикация поездки не выполнена: данные пользователя не получены",
 			slog.Any("error", err),
 		)
-		return writeError(c, ErrorCodeValidation, "тело запроса должно быть валидным JSON")
+		return err
 	}
 
-	publishTripCommand, err := parsePublishTripCommandFromRequest(c.Params("tripId"), req)
+	publishTripCommand, err := parsePublishTripCommandFromRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -97,15 +93,10 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(toPublishTripResponse(result))
 }
 
-func parsePublishTripCommandFromRequest(tripIDParam string, req PublishTripRequest) (*service.PublishTripCommand, error) {
+func parsePublishTripCommandFromRequest(tripIDParam string, driverID uuid.UUID) (*service.PublishTripCommand, error) {
 	tripID, err := uuid.Parse(tripIDParam)
 	if err != nil {
 		return nil, errInvalidTripID
-	}
-
-	driverID, err := parseUUIDIfPresent(req.DriverID, errInvalidDriverID)
-	if err != nil {
-		return nil, err
 	}
 
 	return &service.PublishTripCommand{

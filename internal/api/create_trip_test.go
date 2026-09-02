@@ -19,7 +19,6 @@ func TestServer_CreateTrip(t *testing.T) {
 	t.Run("success - создание поездки", func(t *testing.T) {
 		driverID := uuid.NewString()
 		payload := api.CreateTripRequest{
-			DriverID:      driverID,
 			FromPoint:     "Минск",
 			ToPoint:       "Витебск",
 			DepartureTime: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
@@ -36,6 +35,7 @@ func TestServer_CreateTrip(t *testing.T) {
 		)
 		require.NoError(t, err)
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(testAuthSubjectHeader, driverID)
 
 		resp, err := testApp.Test(req, -1)
 		require.NoError(t, err)
@@ -56,7 +56,24 @@ func TestServer_CreateTrip(t *testing.T) {
 
 		require.NotEmpty(t, got.ID)
 
-		_, err = uuid.Parse(got.ID)
+		tripID, err := uuid.Parse(got.ID)
 		require.NoError(t, err)
+
+		require.Equal(t, driverID, getTripDriverID(t, tripID))
 	})
+}
+
+func getTripDriverID(t *testing.T, tripID uuid.UUID) string {
+	t.Helper()
+
+	var driverID string
+	err := testDB.QueryRow(
+		`SELECT driver_id::text
+		 FROM trips
+		 WHERE id = $1::uuid`,
+		tripID.String(),
+	).Scan(&driverID)
+	require.NoError(t, err)
+
+	return driverID
 }

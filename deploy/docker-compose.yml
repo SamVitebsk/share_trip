@@ -89,8 +89,21 @@ services:
     depends_on:
       - jaeger
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.0
+    container_name: sharetrip-keycloak
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8087:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+
 volumes:
   pgdata:
   loki_data:
   grafana_data:
   prometheus_data:
+  keycloak_data:
