@@ -46,13 +46,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	)
 
 	started := time.Now()
-	result := metricResultSuccess
-
-	defer func() {
-		s.metrics.TripPublishTotal.WithLabelValues(result).Inc()
-		s.metrics.TripPublishDuration.WithLabelValues(result).
-			Observe(time.Since(started).Seconds())
-	}()
+	publishEventCreated := false
 
 	logger := logctx.Logger(ctx).With(
 		slog.String("service", "TripService"),
@@ -62,7 +56,6 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	logger.InfoContext(ctx, "публикация поездки в service начата")
 
 	if err := validatePublishTripCommand(cmd); err != nil {
-		result = metricResultFromError(err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.WarnContext(
@@ -178,12 +171,12 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 			)
 			return publishTripError(cmd.TripID, err)
 		}
+		publishEventCreated = true
 
 		return nil
 	})
 	if err != nil {
 		tripErr := publishTripError(cmd.TripID, err)
-		result = metricResultFromError(tripErr)
 		span.RecordError(tripErr)
 		span.SetStatus(codes.Error, tripErr.Error())
 		logger.ErrorContext(
@@ -192,6 +185,12 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 			slog.Any("error", err),
 		)
 		return nil, tripErr
+	}
+
+	if publishEventCreated {
+		s.metrics.TripPublishTotal.WithLabelValues(metricResultSuccess).Inc()
+		s.metrics.TripPublishDuration.WithLabelValues(metricResultSuccess).
+			Observe(time.Since(started).Seconds())
 	}
 
 	publishTripResult := toPublishTripResult(publishedTrip)
