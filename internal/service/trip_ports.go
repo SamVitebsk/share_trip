@@ -20,3 +20,12 @@ type TripRepositoryTx interface {
 	CreateHistory(ctx context.Context, history domain.TripHistory) error
 	CreateOutboxEvent(ctx context.Context, event outbox.Event) error
 }
+
+type ContractChecker interface {
+	CheckService(ctx context.Context, driverID string, serviceCode string) (CheckResult, error)
+}
+
+type CheckResult struct {
+	Allowed bool
+	Reason  string
+}

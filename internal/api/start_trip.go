@@ -2,7 +2,6 @@ package api
 
 import (
 	"log/slog"
-
 	"share_trip/internal/observability/logctx"
 	"share_trip/internal/service"
 
@@ -13,7 +12,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-type PublishTripResponse struct {
+type StartTripResponse struct {
 	ID            string `json:"id"`
 	DriverID      string `json:"driverId"`
 	FromPoint     string `json:"fromPoint"`
@@ -24,89 +23,89 @@ type PublishTripResponse struct {
 	CreatedAt     string `json:"createdAt"`
 }
 
-func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
+func (h *TripHandler) StartTrip(c *fiber.Ctx) error {
 	ctx := c.UserContext()
 	logger := logctx.Logger(ctx).With(
-		slog.String("handler", "PublishTrip"),
+		slog.String("handler", "StartTrip"),
 	)
 
 	tracer := otel.Tracer("trip-api")
-	ctx, span := tracer.Start(ctx, "PublishTripHandler")
+	ctx, span := tracer.Start(ctx, "StartTripHandler")
 	defer span.End()
 
 	c.SetUserContext(ctx)
 	c.Set("trace-id", span.SpanContext().TraceID().String())
-	span.SetAttributes(attribute.String("operation", "publish_trip"))
+	span.SetAttributes(attribute.String("operation", "start_trip"))
 
 	driverID, err := driverIDFromClaims(c)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
-			"публикация поездки не выполнена: данные пользователя не получены",
+			"старт поездки не выполнен: данные пользователя не получены",
 			slog.Any("error", err),
 		)
 		return err
 	}
 
-	publishTripRequest, err := parsePublishTripRequest(c.Params("tripId"), driverID)
+	startTripRequest, err := parseStartTripRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.Warn(
-			"публикация поездки не выполнена: некорректный запрос",
+			"старт поездки не выполнен: некорректный запрос",
 			slog.Any("error", err),
 		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
 
 	logger = logger.With(
-		slog.String("trip_id", publishTripRequest.TripID.String()),
-		slog.String("driver_id", publishTripRequest.DriverID.String()),
+		slog.String("trip_id", startTripRequest.TripID.String()),
+		slog.String("driver_id", startTripRequest.DriverID.String()),
 	)
 	span.SetAttributes(
-		attribute.String("trip_id", publishTripRequest.TripID.String()),
-		attribute.String("driver_id", publishTripRequest.DriverID.String()),
+		attribute.String("trip_id", startTripRequest.TripID.String()),
+		attribute.String("driver_id", startTripRequest.DriverID.String()),
 	)
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
-	logger.Info("запрос на публикацию поездки принят")
+	logger.Info("запрос на старт поездки принят")
 
-	result, err := h.tripService.PublishTrip(ctx, *publishTripRequest)
+	startTripResponse, err := h.tripService.StartTrip(ctx, *startTripRequest)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.Error(
-			"публикация поездки не выполнена",
+			"старт поездки не выполнен",
 			slog.Any("error", err),
 		)
 		return writeServiceError(c, err)
 	}
 
 	logger.Info(
-		"публикация поездки завершена",
-		slog.String("status", string(result.Status)),
+		"старт поездки завершен успешно",
+		slog.String("status", string(startTripResponse.Status)),
 	)
-	span.SetAttributes(attribute.String("status", string(result.Status)))
+	span.SetAttributes(attribute.String("status", string(startTripResponse.Status)))
 
-	return c.Status(fiber.StatusOK).JSON(toPublishTripResponse(result))
+	return c.Status(fiber.StatusOK).JSON(toStartTripResponse(startTripResponse))
 }
 
-func parsePublishTripRequest(tripIDParam string, driverID uuid.UUID) (*service.PublishTripRequest, error) {
+func parseStartTripRequest(tripIDParam string, driverID uuid.UUID) (*service.StartTripRequest, error) {
 	tripID, err := uuid.Parse(tripIDParam)
 	if err != nil {
 		return nil, errInvalidTripID
 	}
 
-	return &service.PublishTripRequest{
+	return &service.StartTripRequest{
 		TripID:   tripID,
 		DriverID: driverID,
 	}, nil
 }
 
-func toPublishTripResponse(result *service.PublishTripResponse) PublishTripResponse {
-	return PublishTripResponse{
+func toStartTripResponse(result *service.StartTripResponse) StartTripResponse {
+	return StartTripResponse{
 		ID:            result.ID.String(),
 		DriverID:      result.DriverID.String(),
 		FromPoint:     result.FromPoint,

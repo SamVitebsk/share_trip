@@ -17,12 +17,12 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-type GetTripQuery struct {
+type GetTripRequest struct {
 	TripID   uuid.UUID
 	DriverID uuid.UUID
 }
 
-type TripView struct {
+type TripResponse struct {
 	ID            uuid.UUID
 	DriverID      uuid.UUID
 	FromPoint     string
@@ -33,7 +33,7 @@ type TripView struct {
 	CreatedAt     time.Time
 }
 
-func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView, error) {
+func (s *TripService) GetTrip(ctx context.Context, req GetTripRequest) (TripResponse, error) {
 	logger := logctx.Logger(ctx).With(
 		slog.String("service", "TripService"),
 		slog.String("operation", "GetTrip"),
@@ -44,15 +44,15 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("operation", "get_trip"),
-		attribute.String("trip_id", query.TripID.String()),
-		attribute.String("driver_id", query.DriverID.String()),
+		attribute.String("trip_id", req.TripID.String()),
+		attribute.String("driver_id", req.DriverID.String()),
 	)
 
 	logger.InfoContext(ctx, "получение поездки в service начато")
 
-	trip, err := s.tripRepository.GetByID(ctx, query.TripID)
+	trip, err := s.tripRepository.GetByID(ctx, req.TripID)
 	if errors.Is(err, repository.ErrNotFound) {
-		tripErr := NotFound(fmt.Sprintf("поездка не найдена: %s", query.TripID))
+		tripErr := NotFound(fmt.Sprintf("поездка не найдена: %s", req.TripID))
 		span.RecordError(tripErr)
 		span.SetStatus(codes.Error, tripErr.Error())
 		logger.WarnContext(
@@ -60,7 +60,7 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 			"получение поездки не выполнено: поездка не найдена",
 			slog.Any("error", err),
 		)
-		return TripView{}, tripErr
+		return TripResponse{}, tripErr
 	}
 	if err != nil {
 		span.RecordError(err)
@@ -70,10 +70,10 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 			"получение поездки не выполнено: ошибка repository",
 			slog.Any("error", err),
 		)
-		return TripView{}, err
+		return TripResponse{}, err
 	}
 
-	if trip.DriverID != query.DriverID {
+	if trip.DriverID != req.DriverID {
 		tripErr := Forbidden("доступ к поездке запрещен")
 		span.RecordError(tripErr)
 		span.SetStatus(codes.Error, tripErr.Error())
@@ -81,12 +81,12 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 			ctx,
 			"получение поездки не выполнено: поездка принадлежит другому водителю",
 			slog.String("driver_id", trip.DriverID.String()),
-			slog.String("request_driver_id", query.DriverID.String()),
+			slog.String("request_driver_id", req.DriverID.String()),
 		)
-		return TripView{}, tripErr
+		return TripResponse{}, tripErr
 	}
 
-	tripView := tripViewFromDomain(trip)
+	tripView := toTripResponse(trip)
 
 	logger.InfoContext(
 		ctx,
@@ -102,8 +102,8 @@ func (s *TripService) GetTrip(ctx context.Context, query GetTripQuery) (TripView
 	return tripView, nil
 }
 
-func tripViewFromDomain(trip domain.Trip) TripView {
-	return TripView{
+func toTripResponse(trip domain.Trip) TripResponse {
+	return TripResponse{
 		ID:            trip.ID,
 		DriverID:      trip.DriverID,
 		FromPoint:     trip.FromPoint,

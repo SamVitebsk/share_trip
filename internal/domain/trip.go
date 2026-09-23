@@ -11,6 +11,7 @@ type TripStatus string
 const (
 	TripStatusDraft     TripStatus = "draft"
 	TripStatusPublished TripStatus = "published"
+	TripStatusStarted   TripStatus = "started"
 	TripStatusCanceled  TripStatus = "canceled"
 	TripStatusCompleted TripStatus = "completed"
 )

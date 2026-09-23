@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"share_trip/internal/app"
+	"share_trip/internal/clients/contract"
 	"share_trip/internal/observability/metrics"
 	"share_trip/internal/observability/tracing"
 	"time"
@@ -66,6 +67,16 @@ func main() {
 		SSLMode:  config.Env("DB_SSLMODE", "disable"),
 	}
 
+	contractConfig := config.ContractConfig{
+		BaseURL:    config.Env("CONTRACT_SERVICE_URL", "http://localhost:9190"),
+		Timeout:    config.EnvDuration("CONTRACT_SERVICE_TIMEOUT", 2*time.Second),
+		RetryCount: config.EnvInt("CONTRACT_SERVICE_RETRY", 2),
+	}
+	contractClient, err := contract.NewClient(contractConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	pool, err := postgres.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		log.Fatal(err)
@@ -81,7 +92,7 @@ func main() {
 			return fn(ctx, trips)
 		})
 	}
-	tripService := service.NewTripService(repo, runTripTx, appMetrics)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 

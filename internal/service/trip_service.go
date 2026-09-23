@@ -8,15 +8,17 @@ import (
 type TripTxRunner func(ctx context.Context, fn func(ctx context.Context, trips TripRepositoryTx) error) error
 
 type TripService struct {
-	tripRepository TripRepository
-	runTripTx      TripTxRunner
-	metrics        *metrics.Metrics
+	tripRepository  TripRepository
+	runTripTx       TripTxRunner
+	metrics         *metrics.Metrics
+	contractChecker ContractChecker
 }
 
-func NewTripService(trips TripRepository, runTripTx TripTxRunner, metrics *metrics.Metrics) *TripService {
+func NewTripService(trips TripRepository, runTripTx TripTxRunner, metrics *metrics.Metrics, contractChecker ContractChecker) *TripService {
 	return &TripService{
-		tripRepository: trips,
-		runTripTx:      runTripTx,
-		metrics:        metrics,
+		tripRepository:  trips,
+		runTripTx:       runTripTx,
+		metrics:         metrics,
+		contractChecker: contractChecker,
 	}
 }

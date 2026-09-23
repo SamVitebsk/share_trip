@@ -28,4 +28,10 @@ func (s *Server) Route(route fiber.Router, authMiddleware fiber.Handler, keycloa
 		middleware.RequireClientRole(keycloakClientID, clientRole),
 		s.tripHandler.PublishTrip,
 	)
+	route.Post(
+		"/trip/:tripId/start",
+		authMiddleware,
+		middleware.RequireClientRole(keycloakClientID, clientRole),
+		s.tripHandler.StartTrip,
+	)
 }

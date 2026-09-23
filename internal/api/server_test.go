@@ -85,7 +85,8 @@ func TestMain(m *testing.M) {
 			return fn(ctx, trips)
 		})
 	}
-	tripService := service.NewTripService(repo, runTripTx, appMetrics)
+	mockChecker := &mockContractChecker{allowed: true}
+	tripService := service.NewTripService(repo, runTripTx, appMetrics, mockChecker)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 	server := api.NewServer(tripHandler, readyHandler)
@@ -147,4 +148,17 @@ func waitReady(db *sql.DB) {
 	}
 
 	log.Fatalf("database is not ready after timeout")
+}
+
+type mockContractChecker struct {
+	allowed bool
+	err     error
+	reason  string
+}
+
+func (m *mockContractChecker) CheckService(_ context.Context, _ string, _ string) (service.CheckResult, error) {
+	return service.CheckResult{
+		Allowed: m.allowed,
+		Reason:  m.reason,
+	}, m.err
 }

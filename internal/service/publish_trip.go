@@ -18,12 +18,12 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
-type PublishTripCommand struct {
+type PublishTripRequest struct {
 	TripID   uuid.UUID
 	DriverID uuid.UUID
 }
 
-type PublishTripResult struct {
+type PublishTripResponse struct {
 	ID            uuid.UUID
 	DriverID      uuid.UUID
 	FromPoint     string
@@ -34,15 +34,15 @@ type PublishTripResult struct {
 	CreatedAt     time.Time
 }
 
-func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (*PublishTripResult, error) {
+func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (*PublishTripResponse, error) {
 	tracer := otel.Tracer("TripService")
 	ctx, span := tracer.Start(ctx, "TripService.PublishTrip")
 	defer span.End()
 
 	span.SetAttributes(
 		attribute.String("operation", "publish_trip"),
-		attribute.String("trip_id", cmd.TripID.String()),
-		attribute.String("driver_id", cmd.DriverID.String()),
+		attribute.String("trip_id", req.TripID.String()),
+		attribute.String("driver_id", req.DriverID.String()),
 	)
 
 	started := time.Now()
@@ -55,7 +55,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 
 	logger.InfoContext(ctx, "публикация поездки в service начата")
 
-	if err := validatePublishTripCommand(cmd); err != nil {
+	if err := validatePublishTripRequest(req); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		logger.WarnContext(
@@ -70,14 +70,14 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	err := s.runTripTx(ctx, func(ctx context.Context, tripRepositoryTx TripRepositoryTx) error {
 		logger.InfoContext(ctx, "получение поездки для публикации начато")
 
-		trip, err := tripRepositoryTx.GetForUpdateByID(ctx, cmd.TripID)
+		trip, err := tripRepositoryTx.GetForUpdateByID(ctx, req.TripID)
 		if err != nil {
 			logger.ErrorContext(
 				ctx,
 				"получение поездки для публикации не выполнено",
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 
 		fromStatus := trip.Status
@@ -91,10 +91,10 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 		domainCtx, domainSpan := tracer.Start(ctx, "Trip.Publish")
 		domainSpan.SetAttributes(
 			attribute.String("trip_id", trip.ID.String()),
-			attribute.String("driver_id", cmd.DriverID.String()),
+			attribute.String("driver_id", req.DriverID.String()),
 			attribute.String("from_status", string(fromStatus)),
 		)
-		if err := trip.Publish(cmd.DriverID); err != nil {
+		if err := trip.Publish(req.DriverID); err != nil {
 			domainSpan.RecordError(err)
 			domainSpan.SetStatus(codes.Error, err.Error())
 			domainSpan.End()
@@ -104,7 +104,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 				slog.String("from_status", string(fromStatus)),
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 		domainSpan.SetAttributes(attribute.String("to_status", string(trip.Status)))
 		domainSpan.End()
@@ -134,7 +134,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 				"обновление статуса поездки не выполнено",
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 		publishedTrip = updatedTrip
 
@@ -151,7 +151,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 				"создание истории публикации поездки не выполнено",
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 
 		event, err := outbox.NewTripPublishedEvent(trip.ID)
@@ -161,7 +161,7 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 				"создание outbox-события публикации поездки не выполнено",
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 		if err := tripRepositoryTx.CreateOutboxEvent(ctx, event); err != nil {
 			logger.ErrorContext(
@@ -169,14 +169,14 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 				"сохранение outbox-события публикации поездки не выполнено",
 				slog.Any("error", err),
 			)
-			return publishTripError(cmd.TripID, err)
+			return publishTripError(req.TripID, err)
 		}
 		publishEventCreated = true
 
 		return nil
 	})
 	if err != nil {
-		tripErr := publishTripError(cmd.TripID, err)
+		tripErr := publishTripError(req.TripID, err)
 		span.RecordError(tripErr)
 		span.SetStatus(codes.Error, tripErr.Error())
 		logger.ErrorContext(
@@ -205,16 +205,16 @@ func (s *TripService) PublishTrip(ctx context.Context, cmd PublishTripCommand) (
 	return &publishTripResult, nil
 }
 
-func validatePublishTripCommand(cmd PublishTripCommand) error {
+func validatePublishTripRequest(req PublishTripRequest) error {
 	var validationErrors []FieldError
 
-	if cmd.TripID == uuid.Nil {
+	if req.TripID == uuid.Nil {
 		validationErrors = append(validationErrors, FieldError{
 			Field:   "tripId",
 			Message: "ID поездки обязателен",
 		})
 	}
-	if cmd.DriverID == uuid.Nil {
+	if req.DriverID == uuid.Nil {
 		validationErrors = append(validationErrors, FieldError{
 			Field:   "driverId",
 			Message: "ID водителя обязателен",
@@ -228,8 +228,8 @@ func validatePublishTripCommand(cmd PublishTripCommand) error {
 	return nil
 }
 
-func toPublishTripResult(trip domain.Trip) PublishTripResult {
-	return PublishTripResult{
+func toPublishTripResult(trip domain.Trip) PublishTripResponse {
+	return PublishTripResponse{
 		ID:            trip.ID,
 		DriverID:      trip.DriverID,
 		FromPoint:     trip.FromPoint,

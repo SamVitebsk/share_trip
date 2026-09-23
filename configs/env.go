@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"time"
 )
 
 func Env(key, def string) string {
@@ -26,4 +27,18 @@ func EnvInt(key string, def int) int {
 	}
 
 	return n
+}
+
+func EnvDuration(key string, def time.Duration) time.Duration {
+	val := os.Getenv(key)
+	if val == "" {
+		return def
+	}
+
+	d, err := time.ParseDuration(val)
+	if err != nil {
+		return def
+	}
+
+	return d
 }

@@ -65,7 +65,7 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		return err
 	}
 
-	createTripCommand, err := createTripCommandFromRequest(req, driverID)
+	createTripRequest, err := createTripRequest(req, driverID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -75,17 +75,17 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
-	span.SetAttributes(attribute.String("driver_id", createTripCommand.DriverID.String()))
+	span.SetAttributes(attribute.String("driver_id", createTripRequest.DriverID.String()))
 
 	logger = logger.With(
-		slog.String("driver_id", createTripCommand.DriverID.String()),
+		slog.String("driver_id", createTripRequest.DriverID.String()),
 	)
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
 	logger.Info("запрос на создание поездки принят")
 
-	result, err := h.tripService.CreateTrip(ctx, createTripCommand)
+	result, err := h.tripService.CreateTrip(ctx, createTripRequest)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -102,20 +102,20 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	)
 	span.SetAttributes(
 		attribute.String("trip_id", result.TripID.String()),
-		attribute.String("driver_id", createTripCommand.DriverID.String()),
+		attribute.String("driver_id", createTripRequest.DriverID.String()),
 		attribute.String("status", "created"),
 	)
 
 	return c.Status(fiber.StatusCreated).JSON(createTripResponseFromResult(result))
 }
 
-func createTripCommandFromRequest(req CreateTripRequest, driverID uuid.UUID) (service.CreateTripCommand, error) {
+func createTripRequest(req CreateTripRequest, driverID uuid.UUID) (service.CreateTripRequest, error) {
 	departureTime, err := parseRFC3339TimeIfPresent(req.DepartureTime, errInvalidDepartureTime)
 	if err != nil {
-		return service.CreateTripCommand{}, err
+		return service.CreateTripRequest{}, err
 	}
 
-	return service.CreateTripCommand{
+	return service.CreateTripRequest{
 		DriverID:      driverID,
 		FromPoint:     req.FromPoint,
 		ToPoint:       req.ToPoint,
@@ -124,7 +124,7 @@ func createTripCommandFromRequest(req CreateTripRequest, driverID uuid.UUID) (se
 	}, nil
 }
 
-func createTripResponseFromResult(result service.CreateTripResult) CreateTripResponse {
+func createTripResponseFromResult(result service.CreateTripResponse) CreateTripResponse {
 	return CreateTripResponse{
 		ID: result.TripID.String(),
 	}

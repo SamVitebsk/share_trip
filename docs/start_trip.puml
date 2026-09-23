@@ -1,0 +1,80 @@
+@startuml
+skinparam maxMessageSize 150
+autonumber
+
+actor "Водитель" as Driver
+participant "ShareTrip API" as API
+participant "TripService\n(Use Case)" as Service
+participant "TripRepository" as Repo
+participant "ContractClient" as ContractClient
+participant "Contract Service" as ContractService
+
+Driver -> API : POST /api/trip/{id}/start
+activate API
+
+API -> Service : StartTripRequest
+activate Service
+
+Service -> Repo : GetByID(tripID)
+activate Repo
+Repo --> Service : trip (state: published)
+deactivate Repo
+
+note over Service
+  Pre-flight check:
+  проверка прав водителя
+end note
+
+Service -> ContractClient : CheckService("tripCreation")
+activate ContractClient
+
+ContractClient -> ContractService : HTTP GET /contract/check
+activate ContractService
+
+alt Успешный сценарий (allowed=true)
+    ContractService --> ContractClient : 200 OK { allowed: true }
+    ContractClient --> Service : CheckResult{Allowed: true}
+    
+    Service -> Repo : RunTripTx()
+    activate Repo
+    
+    Repo -> Repo : GetForUpdateByID(tripID)
+    note right: SELECT FOR UPDATE
+    
+    Service -> Service : trip.Start(driverID)
+    note right: Domain logic:\npublished -> started
+    
+    Service -> Repo : UpdateStatus(started)
+    Service -> Repo : CreateHistory()
+    Service -> Repo : CreateOutboxEvent("trip_started")
+    
+    Repo --> Service : Transaction Committed
+    deactivate Repo
+    
+    Service --> API : StartTripResponse (started)
+    API --> Driver : 200 OK (Trip JSON)
+
+else Сценарий бизнес-отказа (allowed=false)
+    ContractService --> ContractClient : 200 OK { allowed: false, reason: "limit exceeded" }
+    ContractClient --> Service : CheckResult{Allowed: false}
+    Service --> API : 403 Forbidden Error
+    API --> Driver : 403 Forbidden
+    
+else Сценарий отказа Contract Service (Timeout / 502 / 503)
+    ContractService --> ContractClient : 504 Gateway Timeout
+    deactivate ContractService
+    
+    note over ContractClient
+       Retry mechanics x2
+    end note
+    
+    ContractClient --> Service : error "contract service unavailable"
+    deactivate ContractClient
+    
+    Service --> API : 500 Internal Error
+    deactivate Service
+    
+    API --> Driver : 500 Internal Server Error
+    deactivate API
+end
+@enduml

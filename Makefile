@@ -1,3 +1,7 @@
+OAPI_CODEGEN_VERSION := v2.8.0
+CONTRACT_OPENAPI_URL ?= ../sharetrip-contract/api/contract.yaml
+CONTRACT_CLIENT_DIR  := internal/clients/contract
+
 APP_NAME ?= sharetrip
 BIN_DIR ?= bin
 BIN ?= $(BIN_DIR)/$(APP_NAME)
@@ -73,3 +77,13 @@ check: fmt lint test build
 e2e:
 	@curl -s http://localhost:9090/api/ready
 	@echo "OK: e2e ready check passed"
+
+generate-contract-client:
+	@mkdir -p $(CONTRACT_CLIENT_DIR)/gen
+	go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION) \
+		-generate types,client,skip-prune \
+		-response-type-suffix Wrapper \
+		-package contractgen \
+		-import-mapping ../contract.yaml:- \
+		-o $(CONTRACT_CLIENT_DIR)/gen/client.gen.go \
+		$(CONTRACT_OPENAPI_URL)

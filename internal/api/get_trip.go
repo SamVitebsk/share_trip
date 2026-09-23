@@ -54,7 +54,7 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 		return err
 	}
 
-	query, err := getTripQueryFromPath(c.Params("tripId"), driverID)
+	tripRequest, err := parseGetTripRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -64,18 +64,18 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 		)
 		return writeError(c, ErrorCodeValidation, err.Error())
 	}
-	span.SetAttributes(attribute.String("trip_id", query.TripID.String()))
+	span.SetAttributes(attribute.String("trip_id", tripRequest.TripID.String()))
 
 	logger = logger.With(
-		slog.String("trip_id", query.TripID.String()),
-		slog.String("driver_id", query.DriverID.String()),
+		slog.String("trip_id", tripRequest.TripID.String()),
+		slog.String("driver_id", tripRequest.DriverID.String()),
 	)
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
 	logger.Info("запрос на получение поездки принят")
 
-	trip, err := h.tripService.GetTrip(ctx, query)
+	trip, err := h.tripService.GetTrip(ctx, tripRequest)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -100,19 +100,19 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(tripResponseFromView(trip))
 }
 
-func getTripQueryFromPath(tripIDParam string, driverID uuid.UUID) (service.GetTripQuery, error) {
+func parseGetTripRequest(tripIDParam string, driverID uuid.UUID) (service.GetTripRequest, error) {
 	tripID, err := uuid.Parse(tripIDParam)
 	if err != nil {
-		return service.GetTripQuery{}, errInvalidTripID
+		return service.GetTripRequest{}, errInvalidTripID
 	}
 
-	return service.GetTripQuery{
+	return service.GetTripRequest{
 		TripID:   tripID,
 		DriverID: driverID,
 	}, nil
 }
 
-func tripResponseFromView(trip service.TripView) TripResponse {
+func tripResponseFromView(trip service.TripResponse) TripResponse {
 	return TripResponse{
 		ID:            trip.ID.String(),
 		DriverID:      trip.DriverID.String(),
