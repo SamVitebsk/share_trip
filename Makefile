@@ -21,7 +21,9 @@ DB_DSN ?= postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?
 
 MIGRATIONS_DIR ?= migrations
 
-.PHONY: deps fmt lint test build run up down migrate-up migrate-down migrate-status e2e check
+MOCKGEN_VERSION := v0.6.0
+
+.PHONY: deps fmt lint test build run up down migrate-up migrate-down migrate-status e2e check deps install-mockgen generate generate-mocks
 
 deps:
 	$(GO) mod download
@@ -87,3 +89,13 @@ generate-contract-client:
 		-import-mapping ../contract.yaml:- \
 		-o $(CONTRACT_CLIENT_DIR)/gen/client.gen.go \
 		$(CONTRACT_OPENAPI_URL)
+
+deps: install-mockgen
+
+install-mockgen:
+	go install go.uber.org/mock/mockgen@$(MOCKGEN_VERSION)
+
+generate: generate-mocks
+
+generate-mocks: deps
+	go generate ./...

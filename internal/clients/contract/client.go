@@ -56,6 +56,10 @@ func (c *Client) CheckService(ctx context.Context, driverID string, serviceCode 
 		return service.CheckResult{}, err
 	}
 
+	if resp.StatusCode() != 200 {
+		return service.CheckResult{}, http.ErrServerClosed
+	}
+
 	if resp.JSON200 == nil {
 		return service.CheckResult{}, http.ErrServerClosed
 	}
