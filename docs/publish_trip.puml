@@ -1,0 +1,32 @@
+@startuml
+title Publish trip and send notification asynchronously (ShareTrip -> Kafka -> Notification)
+actor Driver
+participant "ShareTrip API" as API
+participant "Trip Application Service" as TripService
+database "Trip DB" as TripDB
+queue "Kafka: trip.events" as Kafka
+participant "Notification Service" as Notification
+database "Notification DB" as NotificationDB
+
+Driver -> API : POST /trips/{id}/publish
+API -> TripService : PublishTrip(driverID, tripID)
+TripService -> TripDB : Load Trip(status=draft)
+TripDB --> TripService : Trip
+
+TripService -> TripService : trip.Publish(driverID)
+TripService -> TripDB : Save Trip(status=published)
+TripDB --> TripService : ok
+
+TripService -> Kafka : publish TripPublished
+Kafka --> TripService : ack
+
+TripService --> API : published
+API --> Driver : 200 OK
+
+== Asynchronous processing ==
+
+Kafka -> Notification : consume TripPublished
+Notification -> NotificationDB : check event_id (idempotency)
+Notification -> NotificationDB : create notification
+Notification -> Kafka : commit offset
+@enduml

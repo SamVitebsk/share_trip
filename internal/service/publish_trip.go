@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"share_trip/internal/clients/kafka"
 	"time"
 
 	"share_trip/internal/domain"
@@ -191,6 +192,17 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 		s.metrics.TripPublishTotal.WithLabelValues(metricResultSuccess).Inc()
 		s.metrics.TripPublishDuration.WithLabelValues(metricResultSuccess).
 			Observe(time.Since(started).Seconds())
+
+		event := kafka.TripPublished{
+			EventID:    uuid.NewString(),
+			EventType:  kafka.EventTypeTripPublished,
+			TripID:     publishedTrip.ID.String(),
+			DriverID:   publishedTrip.DriverID.String(),
+			OccurredAt: time.Now(),
+		}
+		if err = s.eventPublisher.SendEvent(ctx, event); err != nil {
+			logger.ErrorContext(ctx, "отправка события TripPublished в Kafka завершилась ошибкой (поездка сохранена)", slog.Any("error", err))
+		}
 	}
 
 	publishTripResult := toPublishTripResult(publishedTrip)

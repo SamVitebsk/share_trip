@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"share_trip/internal/clients/kafka"
 
 	"share_trip/internal/domain"
 	"share_trip/internal/outbox"
@@ -29,4 +30,8 @@ type ContractChecker interface {
 type CheckResult struct {
 	Allowed bool
 	Reason  string
+}
+
+type EventPublisher interface {
+	SendEvent(ctx context.Context, event kafka.TripPublished) error
 }

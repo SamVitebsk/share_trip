@@ -6,6 +6,7 @@ import (
 	"os"
 	"share_trip/internal/app"
 	"share_trip/internal/clients/contract"
+	"share_trip/internal/clients/kafka"
 	"share_trip/internal/observability/metrics"
 	"share_trip/internal/observability/tracing"
 	"time"
@@ -92,7 +93,9 @@ func main() {
 			return fn(ctx, trips)
 		})
 	}
-	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient)
+	kafkaConfig := config.LoadKafkaConfig()
+	producer := kafka.NewProducer(kafkaConfig.Brokers, kafkaConfig.Topic)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient, producer)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 

@@ -46,7 +46,7 @@ func TestService_StartTrip_Allowed(t *testing.T) {
 	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
 		return fn(ctx, repositoryTx)
 	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker)
+	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
 		TripID:   tripID,
@@ -86,7 +86,7 @@ func TestService_StartTrip_Denied(t *testing.T) {
 	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
 		return fn(ctx, repositoryTx)
 	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker)
+	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
 		TripID:   tripID,
@@ -129,7 +129,7 @@ func TestService_StartTrip_Timeout(t *testing.T) {
 	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
 		return fn(ctx, repositoryTx)
 	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker)
+	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
 		TripID:   tripID,

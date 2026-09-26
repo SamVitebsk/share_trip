@@ -86,7 +86,7 @@ func TestMain(m *testing.M) {
 		})
 	}
 	mockChecker := &mockContractChecker{allowed: true}
-	tripService := service.NewTripService(repo, runTripTx, appMetrics, mockChecker)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics, mockChecker, &mockEventPublisher{})
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 	server := api.NewServer(tripHandler, readyHandler)
