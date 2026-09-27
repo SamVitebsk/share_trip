@@ -1,0 +1,27 @@
+@startuml
+title End-to-End Consistency: TripPublished -> NotificationCreated
+actor Driver
+participant "ShareTrip\nService" as Producer
+database "Trip DB" as ProducerDB
+participant "Outbox\nRelay" as Relay
+queue "Kafka" as Kafka
+participant "Notification\nService" as Consumer
+database "Notification DB" as ConsumerDB
+
+Driver -> Producer : POST /trips/{id}/publish
+Producer -> ProducerDB : tx: Save Trip + Outbox Event
+ProducerDB --> Producer : ok
+Producer --> Driver : 200 OK
+
+== Outbox Relay ==
+Relay -> ProducerDB : Read unsent events
+Relay -> Kafka : Publish TripPublished event
+Kafka --> Relay : ack
+Relay -> ProducerDB : Mark outbox event as sent
+
+== Inbox Consumer ==
+Kafka -> Consumer : Deliver event
+Consumer -> ConsumerDB : tx: Check processed_events + Create notification
+ConsumerDB --> Consumer : ok
+Consumer -> Kafka : Commit consumer offset
+@enduml

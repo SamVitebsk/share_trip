@@ -1,0 +1,24 @@
+@startuml
+title Outbox Pattern (ShareTrip Producer)
+participant "Trip API" as API
+participant "Trip Service" as Service
+database "Trip DB\n(trips, outbox_events)" as DB
+participant "Outbox Relay\n(Publisher)" as Publisher
+queue "Kafka: trip.events" as Kafka
+
+API -> Service : Publish Trip
+Service -> DB : BEGIN TX
+Service -> DB : UPDATE trips SET status='published'
+Service -> DB : INSERT INTO outbox_events (event_id, type="TripPublished")
+Service -> DB : COMMIT TX
+Service --> API : 200 OK
+
+== Asynchronous Relay ==
+Publisher -> DB : SELECT * FROM outbox_events WHERE sent=false
+DB --> Publisher : Events list
+loop for each event
+  Publisher -> Kafka : publish(event)
+  Kafka --> Publisher : ack
+  Publisher -> DB : UPDATE outbox_events SET sent=true
+end
+@enduml

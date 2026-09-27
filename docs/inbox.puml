@@ -1,0 +1,18 @@
+@startuml
+title Inbox Pattern (Notification Consumer)
+queue "Kafka: trip.events" as Kafka
+participant "Notification\nConsumer" as Consumer
+database "Notification DB\n(notifications, processed_events)" as DB
+
+Kafka -> Consumer : consume(event)
+Consumer -> DB : BEGIN TX
+Consumer -> DB : INSERT event_id INTO processed_events
+alt event_id is new
+    Consumer -> DB : INSERT INTO notifications (driver, message)
+    Consumer -> DB : COMMIT TX
+    Consumer -> Kafka : commit offset
+else event is already processed (conflict)
+    Consumer -> DB : ROLLBACK TX
+    Consumer -> Kafka : commit offset (ack duplicate)
+end
+@enduml
