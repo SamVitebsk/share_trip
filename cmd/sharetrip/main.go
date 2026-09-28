@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"log/slog"
 	"os"
 	"share_trip/internal/app"
 	"share_trip/internal/clients/contract"
@@ -14,6 +16,7 @@ import (
 	config "share_trip/configs"
 	"share_trip/internal/api"
 	"share_trip/internal/api/middleware"
+	"share_trip/internal/outbox/publisher"
 	"share_trip/internal/service"
 	"share_trip/internal/storage/postgres"
 	"share_trip/internal/storage/repository"
@@ -98,6 +101,18 @@ func main() {
 	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient, producer)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
+
+	outboxConfig := config.LoadOutboxConfig()
+	relayRepo := repository.NewOutboxRelayRepo(pool)
+	outboxPublisher := publisher.NewPublisher(relayRepo, producer, logger, outboxConfig)
+	go func() {
+		logger.Info("запуск фонового Outbox Publisher relay...")
+		if err := outboxPublisher.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error("фоновый Outbox Publisher relay завершил работу с ошибкой", slog.Any("error", err))
+		} else {
+			logger.Info("фоновый Outbox Publisher relay успешно остановлен")
+		}
+	}()
 
 	server := api.NewServer(tripHandler, readyHandler)
 

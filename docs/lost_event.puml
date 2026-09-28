@@ -1,0 +1,22 @@
+@startuml
+title Message can be lost before Kafka (Without Outbox)
+participant "ShareTrip API" as ShareTrip
+database "Trip DB" as TripDB
+queue "Kafka" as Kafka
+participant "Notification Service" as Notification
+
+ShareTrip -> TripDB : BEGIN TX
+ShareTrip -> TripDB : UPDATE trips SET status='published'
+ShareTrip -> TripDB : COMMIT TX
+TripDB --> ShareTrip : committed
+
+ShareTrip -> Kafka : publish TripPublished
+note right of ShareTrip
+Network failure / Kafka is down.
+Trip is published in DB,
+but Event is LOST.
+end note
+Kafka --> ShareTrip : error / timeout
+
+Kafka -[#red]-> Notification : no message delivered
+@enduml

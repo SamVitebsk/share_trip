@@ -8,8 +8,6 @@ import (
 	kafkago "github.com/segmentio/kafka-go"
 )
 
-const EventTypeTripPublished = "TripPublished"
-
 type TripPublished struct {
 	EventID    string    `json:"event_id"`
 	EventType  string    `json:"event_type"`

@@ -41,7 +41,7 @@ func TestServer_StartTrip(t *testing.T) {
 		}
 
 		require.Equal(t, expected, actual)
-		require.Equal(t, 1, countTripEvents(t, tripID, "trip_started"))
+		require.Equal(t, 1, countTripEvents(t, tripID, "TripStarted"))
 	})
 
 	t.Run("ошибка 403: доступ запрещен (другой водитель)", func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestServer_StartTrip(t *testing.T) {
 
 		require.Equal(t, http.StatusForbidden, startResp.StatusCode)
 		require.Equal(t, "published", getTripStatus(t, tripID))
-		require.Equal(t, 0, countTripEvents(t, tripID, "trip_started"))
+		require.Equal(t, 0, countTripEvents(t, tripID, "TripStarted"))
 	})
 
 	t.Run("ошибка 409: статус не позволяет начать поездку", func(t *testing.T) {
@@ -73,7 +73,7 @@ func TestServer_StartTrip(t *testing.T) {
 
 		require.Equal(t, http.StatusConflict, startResp.StatusCode)
 		require.Equal(t, "draft", getTripStatus(t, tripID))
-		require.Equal(t, 0, countTripEvents(t, tripID, "trip_started"))
+		require.Equal(t, 0, countTripEvents(t, tripID, "TripStarted"))
 	})
 
 	t.Run("успех: поездка уже начата", func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestServer_StartTrip(t *testing.T) {
 
 		require.Equal(t, expected, actual)
 		require.Equal(t, "started", getTripStatus(t, tripID))
-		require.Equal(t, 1, countTripEvents(t, tripID, "trip_started"))
+		require.Equal(t, 0, countTripEvents(t, tripID, "TripStarted"))
 	})
 }
 

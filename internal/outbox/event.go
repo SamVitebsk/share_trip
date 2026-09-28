@@ -2,13 +2,14 @@ package outbox
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const (
-	EventNameTripPublished = "trip_published"
-	EventNameTripStarted   = "trip_started"
+	EventNameTripPublished = "TripPublished"
+	EventNameTripStarted   = "TripStarted"
 )
 
 type Event struct {
@@ -19,27 +20,41 @@ type Event struct {
 }
 
 type TripEventPayload struct {
-	TripID uuid.UUID `json:"trip_id"`
+	EventID    string    `json:"event_id"`
+	EventType  string    `json:"event_type"`
+	TripID     string    `json:"trip_id"`
+	DriverID   string    `json:"driver_id"`
+	OccurredAt time.Time `json:"occurred_at"`
 }
 
-func newTripEvent(tripID uuid.UUID, eventName string) (Event, error) {
-	payload, err := json.Marshal(TripEventPayload{TripID: tripID})
+func newTripEvent(tripID, driverID uuid.UUID, eventName string) (Event, error) {
+	eventID := uuid.New()
+
+	kafkaEvent := TripEventPayload{
+		EventID:    eventID.String(),
+		EventType:  eventName,
+		TripID:     tripID.String(),
+		DriverID:   driverID.String(),
+		OccurredAt: time.Now(),
+	}
+
+	payload, err := json.Marshal(kafkaEvent)
 	if err != nil {
 		return Event{}, err
 	}
 
 	return Event{
-		ID:          uuid.New(),
+		ID:          eventID,
 		EventName:   eventName,
 		AggregateID: tripID,
 		Payload:     payload,
 	}, nil
 }
 
-func NewTripPublishedEvent(tripID uuid.UUID) (Event, error) {
-	return newTripEvent(tripID, EventNameTripPublished)
+func NewTripPublishedEvent(tripID, driverID uuid.UUID) (Event, error) {
+	return newTripEvent(tripID, driverID, EventNameTripPublished)
 }
 
-func NewTripStartedEvent(tripID uuid.UUID) (Event, error) {
-	return newTripEvent(tripID, EventNameTripStarted)
+func NewTripStartedEvent(tripID, driverID uuid.UUID) (Event, error) {
+	return newTripEvent(tripID, driverID, EventNameTripStarted)
 }

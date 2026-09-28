@@ -108,7 +108,7 @@ func (s *TripService) StartTrip(ctx context.Context, req StartTripRequest) (*Sta
 				return startTripError(req.TripID, err)
 			}
 
-			event, err := outbox.NewTripStartedEvent(tripTx.ID)
+			event, err := outbox.NewTripStartedEvent(tripTx.ID, tripTx.DriverID)
 			if err != nil {
 				return startTripError(req.TripID, err)
 			}
