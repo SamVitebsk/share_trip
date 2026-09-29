@@ -67,73 +67,26 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 	}
 
 	var publishedTrip domain.Trip
-	err := s.runTripTx(ctx, func(ctx context.Context, tripRepositoryTx TripRepositoryTx) error {
-		logger.InfoContext(ctx, "получение поездки для публикации начато")
+	var fromStatus domain.TripStatus
 
-		trip, err := tripRepositoryTx.GetForUpdateByID(ctx, req.TripID)
+	err := s.runTripTx(ctx, func(ctx context.Context, tx TripRepositoryTx) error {
+		trip, err := tx.GetForUpdateByID(ctx, req.TripID)
 		if err != nil {
-			logger.ErrorContext(
-				ctx,
-				"получение поездки для публикации не выполнено",
-				slog.Any("error", err),
-			)
 			return publishTripError(req.TripID, err)
 		}
 
-		fromStatus := trip.Status
-		span.SetAttributes(attribute.String("from_status", string(fromStatus)))
-		logger.InfoContext(
-			ctx,
-			"проверка доменных правил публикации начата",
-			slog.String("from_status", string(fromStatus)),
-		)
-
-		domainCtx, domainSpan := tracer.Start(ctx, "Trip.Publish")
-		domainSpan.SetAttributes(
-			attribute.String("trip_id", trip.ID.String()),
-			attribute.String("driver_id", req.DriverID.String()),
-			attribute.String("from_status", string(fromStatus)),
-		)
+		fromStatus = trip.Status
 		if err := trip.Publish(req.DriverID); err != nil {
-			domainSpan.RecordError(err)
-			domainSpan.SetStatus(codes.Error, err.Error())
-			domainSpan.End()
-			logger.WarnContext(
-				domainCtx,
-				"публикация поездки не выполнена: доменное правило не пройдено",
-				slog.String("from_status", string(fromStatus)),
-				slog.Any("error", err),
-			)
 			return publishTripError(req.TripID, err)
 		}
-		domainSpan.SetAttributes(attribute.String("to_status", string(trip.Status)))
-		domainSpan.End()
-		span.SetAttributes(attribute.String("to_status", string(trip.Status)))
 
 		if fromStatus == trip.Status {
-			logger.InfoContext(
-				ctx,
-				"публикация поездки не требует изменения статуса",
-				slog.String("status", string(trip.Status)),
-			)
 			publishedTrip = trip
 			return nil
 		}
 
-		logger.InfoContext(
-			ctx,
-			"статус поездки изменен доменной логикой",
-			slog.String("from_status", string(fromStatus)),
-			slog.String("to_status", string(trip.Status)),
-		)
-
-		updatedTrip, err := tripRepositoryTx.UpdateStatus(ctx, trip.ID, trip.Status)
+		updatedTrip, err := tx.UpdateStatus(ctx, trip.ID, trip.Status)
 		if err != nil {
-			logger.ErrorContext(
-				ctx,
-				"обновление статуса поездки не выполнено",
-				slog.Any("error", err),
-			)
 			return publishTripError(req.TripID, err)
 		}
 		publishedTrip = updatedTrip
@@ -145,36 +98,26 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 			ToStatus:   trip.Status,
 			CreatedAt:  time.Now(),
 		}
-		if err := tripRepositoryTx.CreateHistory(ctx, history); err != nil {
-			logger.ErrorContext(
-				ctx,
-				"создание истории публикации поездки не выполнено",
-				slog.Any("error", err),
-			)
+		if err := tx.CreateHistory(ctx, history); err != nil {
 			return publishTripError(req.TripID, err)
 		}
 
 		event, err := outbox.NewTripPublishedEvent(trip.ID, trip.DriverID)
 		if err != nil {
-			logger.ErrorContext(
-				ctx,
-				"создание outbox-события публикации поездки не выполнено",
-				slog.Any("error", err),
-			)
 			return publishTripError(req.TripID, err)
 		}
-		if err := tripRepositoryTx.CreateOutboxEvent(ctx, event); err != nil {
-			logger.ErrorContext(
-				ctx,
-				"сохранение outbox-события публикации поездки не выполнено",
-				slog.Any("error", err),
-			)
+		if err := tx.CreateOutboxEvent(ctx, event); err != nil {
 			return publishTripError(req.TripID, err)
 		}
 		publishEventCreated = true
-
 		return nil
 	})
+
+	span.SetAttributes(
+		attribute.String("from_status", string(fromStatus)),
+		attribute.String("to_status", string(publishedTrip.Status)),
+	)
+
 	if err != nil {
 		tripErr := publishTripError(req.TripID, err)
 		span.RecordError(tripErr)
@@ -194,14 +137,12 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 	}
 
 	publishTripResult := toPublishTripResult(publishedTrip)
-
 	logger.InfoContext(
 		ctx,
 		"публикация поездки в service завершена",
 		slog.String("status", string(publishTripResult.Status)),
 	)
 	span.SetAttributes(attribute.String("status", string(publishTripResult.Status)))
-
 	return &publishTripResult, nil
 }
 
