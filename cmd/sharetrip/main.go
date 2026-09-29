@@ -62,26 +62,18 @@ func main() {
 		}
 	}()
 
-	cfg := config.PostgresConfig{
-		Host:     config.Env("DB_HOST", "localhost"),
-		Port:     config.EnvInt("DB_PORT", 6543),
-		User:     config.Env("DB_USER", "postgres"),
-		Password: config.Env("DB_PASSWORD", "admin"),
-		DBName:   config.Env("DB_NAME", "share_trip"),
-		SSLMode:  config.Env("DB_SSLMODE", "disable"),
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Error("ошибка инициализации конфигурации", "error", err)
+		os.Exit(1)
 	}
 
-	contractConfig := config.ContractConfig{
-		BaseURL:    config.Env("CONTRACT_SERVICE_URL", "http://localhost:9190"),
-		Timeout:    config.EnvDuration("CONTRACT_SERVICE_TIMEOUT", 2*time.Second),
-		RetryCount: config.EnvInt("CONTRACT_SERVICE_RETRY", 2),
-	}
-	contractClient, err := contract.NewClient(contractConfig)
+	contractClient, err := contract.NewClient(cfg.Contract)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	pool, err := postgres.NewPool(ctx, cfg.DSN())
+	pool, err := postgres.NewPool(ctx, cfg.Database.DSN)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,13 +88,12 @@ func main() {
 			return fn(ctx, trips)
 		})
 	}
-	kafkaConfig := config.LoadKafkaConfig()
-	producer := kafka.NewProducer(kafkaConfig.Brokers, kafkaConfig.Topic)
+	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topic)
 	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient, producer)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 
-	outboxConfig := config.LoadOutboxConfig()
+	outboxConfig := cfg.Outbox
 	relayRepo := repository.NewOutboxRelayRepo(pool)
 	outboxPublisher := publisher.NewPublisher(relayRepo, producer, logger, outboxConfig)
 	go func() {
@@ -122,19 +113,19 @@ func main() {
 	fiberApp.Use(tracing.NewFiberMiddleware())
 	fiberApp.Use(middleware.NewHTTPMetricsMiddleware(appMetrics))
 
-	keycloakClientID := config.Env("KEYCLOAK_CLIENT_ID", "sharetrip-api")
+	keycloakClientID := cfg.KeycloakClientID
 	keycloakAuthMiddleware := middleware.KeycloakRefreshTokenMiddleware(
 		middleware.KeycloakConfig{
-			Issuer:       config.Env("KEYCLOAK_ISSUER", "http://localhost:8087/realms/sharetrip"),
+			Issuer:       cfg.KeycloakIssuer,
 			ClientID:     keycloakClientID,
-			ClientSecret: config.Env("KEYCLOAK_CLIENT_SECRET", "kcTclgACcVx4ozusKmvvihUqARRE4OnI"),
+			ClientSecret: cfg.KeycloakClientSecret,
 		},
 	)
 
 	fiberApp.Get("/metrics", adaptor.HTTPHandler(promhttp.HandlerFor(registry, promhttp.HandlerOpts{})))
 	server.Route(fiberApp.Group("/api"), keycloakAuthMiddleware, keycloakClientID)
 
-	err = fiberApp.Listen(config.Env("SERVER_PORT", ":9090"))
+	err = fiberApp.Listen(":" + cfg.HTTPPort)
 	if err != nil {
 		log.Fatal(err)
 	}

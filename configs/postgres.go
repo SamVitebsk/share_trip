@@ -1,36 +1,21 @@
 package config
 
 import (
-	"net"
-	"net/url"
-	"strconv"
+	"fmt"
+	"os"
 )
 
 type PostgresConfig struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	DSN string
 }
 
-func (c PostgresConfig) DSN() string {
-	ssl := c.SSLMode
-	if ssl == "" {
-		ssl = "disable"
+func LoadPostgresConfig() (PostgresConfig, error) {
+	dsn := os.Getenv("DATABASE_DSN")
+	if dsn == "" {
+		return PostgresConfig{}, fmt.Errorf("DATABASE_DSN is required")
 	}
 
-	dsn := url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword(c.User, c.Password),
-		Host:   net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
-		Path:   c.DBName,
-	}
-
-	query := dsn.Query()
-	query.Set("sslmode", ssl)
-	dsn.RawQuery = query.Encode()
-
-	return dsn.String()
+	return PostgresConfig{
+		DSN: dsn,
+	}, nil
 }

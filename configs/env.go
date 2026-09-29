@@ -1,44 +1,24 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
 
-func Env(key, def string) string {
-	val := os.Getenv(key)
-	if val == "" {
-		return def
+func getenv(key string, fallback string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
 	}
-
-	return val
+	return value
 }
 
-func EnvInt(key string, def int) int {
-	val := os.Getenv(key)
-	if val == "" {
-		return def
-	}
-
-	n, err := strconv.Atoi(val)
+func getenvInt(key string, fallback string) (int, error) {
+	strVal := getenv(key, fallback)
+	n, err := strconv.Atoi(strVal)
 	if err != nil {
-		return def
+		return 0, fmt.Errorf("parse %s: %w", key, err)
 	}
-
-	return n
-}
-
-func EnvDuration(key string, def time.Duration) time.Duration {
-	val := os.Getenv(key)
-	if val == "" {
-		return def
-	}
-
-	d, err := time.ParseDuration(val)
-	if err != nil {
-		return def
-	}
-
-	return d
+	return n, nil
 }

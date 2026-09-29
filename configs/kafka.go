@@ -1,8 +1,8 @@
 package config
 
 import (
+	"fmt"
 	"os"
-	"strings"
 )
 
 type KafkaConfig struct {
@@ -10,19 +10,19 @@ type KafkaConfig struct {
 	Topic   string
 }
 
-func LoadKafkaConfig() KafkaConfig {
+func LoadKafkaConfig() (KafkaConfig, error) {
 	brokers := os.Getenv("KAFKA_BROKERS")
 	if brokers == "" {
-		brokers = "localhost:29092"
+		return KafkaConfig{}, fmt.Errorf("KAFKA_BROKERS is required")
 	}
 
-	topic := os.Getenv("KAFKA_PUBLISH_TRIP_TOPIC")
+	topic := os.Getenv("TRIP_EVENTS_TOPIC")
 	if topic == "" {
-		topic = "trip.events"
+		return KafkaConfig{}, fmt.Errorf("TRIP_EVENTS_TOPIC is required")
 	}
 
 	return KafkaConfig{
-		Brokers: strings.Split(brokers, ","),
+		Brokers: []string{brokers},
 		Topic:   topic,
-	}
+	}, nil
 }

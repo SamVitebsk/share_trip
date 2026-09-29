@@ -1,8 +1,6 @@
 package config
 
 import (
-	"os"
-	"strconv"
 	"time"
 )
 
@@ -11,21 +9,19 @@ type OutboxConfig struct {
 	BatchSize    int
 }
 
-func LoadOutboxConfig() OutboxConfig {
-	intervalStr := os.Getenv("OUTBOX_POLL_INTERVAL_MS")
-	pollMs, err := strconv.Atoi(intervalStr)
-	if err != nil || pollMs <= 0 {
-		pollMs = 2000
+func LoadOutboxConfig() (OutboxConfig, error) {
+	pollIntervalMS, err := getenvInt("OUTBOX_POLL_INTERVAL_MS", "2000")
+	if err != nil {
+		return OutboxConfig{}, err
 	}
 
-	batchStr := os.Getenv("OUTBOX_BATCH_SIZE")
-	batchSize, err := strconv.Atoi(batchStr)
-	if err != nil || batchSize <= 0 {
-		batchSize = 100
+	batchSize, err := getenvInt("OUTBOX_BATCH_SIZE", "100")
+	if err != nil {
+		return OutboxConfig{}, err
 	}
 
 	return OutboxConfig{
-		PollInterval: time.Duration(pollMs) * time.Millisecond,
+		PollInterval: time.Duration(pollIntervalMS) * time.Millisecond,
 		BatchSize:    batchSize,
-	}
+	}, nil
 }

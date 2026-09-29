@@ -2,3 +2,4 @@ covertage.*
 .idea
 bin/
 logs/
+.env

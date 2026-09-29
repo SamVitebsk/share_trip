@@ -1,3 +1,8 @@
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
+
 OAPI_CODEGEN_VERSION := v2.8.0
 CONTRACT_OPENAPI_URL ?= ../sharetrip-contract/api/contract.yaml
 CONTRACT_CLIENT_DIR  := internal/clients/contract
@@ -11,13 +16,7 @@ SERVER_PORT ?= :9090
 
 COMPOSE_FILE ?= deploy/docker-compose.yml
 
-DB_HOST ?= localhost
-DB_PORT ?= 6543
-DB_USER ?= postgres
-DB_PASSWORD ?= admin
-DB_NAME ?= share_trip
-DB_SSLMODE ?= disable
-DB_DSN ?= postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
+DB_DSN ?= $(DATABASE_DSN)
 
 MIGRATIONS_DIR ?= migrations
 
@@ -62,15 +61,15 @@ down:
 	@echo "OK: docker compose services stopped"
 
 migrate-up:
-	goose -dir $(MIGRATIONS_DIR) postgres '$(DB_DSN)' up
+	goose -dir $(MIGRATIONS_DIR) postgres '$(DATABASE_DSN)' up
 	@echo "OK: migrations applied"
 
 migrate-down:
-	goose -dir $(MIGRATIONS_DIR) postgres '$(DB_DSN)' down
+	goose -dir $(MIGRATIONS_DIR) postgres '$(DATABASE_DSN)' down
 	@echo "OK: migration rolled back"
 
 migrate-status:
-	goose -dir $(MIGRATIONS_DIR) postgres '$(DB_DSN)' status
+	goose -dir $(MIGRATIONS_DIR) postgres '$(DATABASE_DSN)' status
 	@echo "OK: migration status checked"
 
 check: fmt lint test build
