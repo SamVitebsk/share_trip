@@ -2,15 +2,62 @@ package service_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"share_trip/internal/domain"
+	"share_trip/internal/observability/metrics"
 	"share_trip/internal/service"
 	"share_trip/internal/service/mocks"
-	"testing"
+	"share_trip/internal/storage/repository"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func setupService(ctrl *gomock.Controller) (*service.TripService, service.TripRepository, *mocks.MockContractChecker) {
+	registry := prometheus.NewRegistry()
+	appMetrics := metrics.New(registry)
+
+	repo := repository.NewRepoPg(testPool, appMetrics)
+
+	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
+		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
+			return fn(ctx, trips)
+		})
+	}
+
+	contractChecker := mocks.NewMockContractChecker(ctrl)
+
+	svc := service.NewTripService(repo, runTripTx, appMetrics, contractChecker, nil)
+	return svc, repo, contractChecker
+}
+
+func insertTestTrip(t *testing.T, ctx context.Context, repo service.TripRepository, tripID, driverID uuid.UUID) domain.Trip {
+	trip := domain.Trip{
+		ID:            tripID,
+		DriverID:      driverID,
+		FromPoint:     "Point A",
+		ToPoint:       "Point B",
+		DepartureTime: time.Now().Add(24 * time.Hour),
+		Seats:         4,
+		Status:        domain.TripStatusPublished,
+		CreatedAt:     time.Now(),
+	}
+
+	history := domain.TripHistory{
+		ID:        uuid.New(),
+		TripID:    tripID,
+		ToStatus:  domain.TripStatusPublished,
+		CreatedAt: time.Now(),
+	}
+
+	err := repo.Create(ctx, trip, history)
+	require.NoError(t, err)
+	return trip
+}
 
 func TestService_StartTrip_Allowed(t *testing.T) {
 	t.Parallel()
@@ -18,44 +65,44 @@ func TestService_StartTrip_Allowed(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	svc, repo, contractChecker := setupService(ctrl)
+	ctx := context.Background()
+
 	tripID := uuid.New()
 	driverID := uuid.New()
 
-	contractChecker := mocks.NewMockContractChecker(ctrl)
-	repository := mocks.NewMockTripRepository(ctrl)
-	repositoryTx := mocks.NewMockTripRepositoryTx(ctrl)
-
-	trip := domain.Trip{
-		ID:       tripID,
-		DriverID: driverID,
-		Status:   domain.TripStatusPublished,
-	}
-	repository.EXPECT().GetByID(gomock.Any(), tripID).Return(trip, nil)
+	insertedTrip := insertTestTrip(t, ctx, repo, tripID, driverID)
 
 	contractChecker.EXPECT().
 		CheckService(gomock.Any(), driverID.String(), "tripCreation").
 		Return(service.CheckResult{Allowed: true, Reason: "service_allowed"}, nil)
 
-	repositoryTx.EXPECT().GetForUpdateByID(gomock.Any(), tripID).Return(trip, nil)
-	repositoryTx.EXPECT().
-		UpdateStatus(gomock.Any(), tripID, domain.TripStatusStarted).
-		Return(domain.Trip{Status: domain.TripStatusStarted}, nil)
-	repositoryTx.EXPECT().CreateHistory(gomock.Any(), gomock.Any()).Return(nil)
-	repositoryTx.EXPECT().CreateOutboxEvent(gomock.Any(), gomock.Any()).Return(nil)
-
-	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
-		return fn(ctx, repositoryTx)
-	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
-
-	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
+	response, err := svc.StartTrip(ctx, service.StartTripRequest{
 		TripID:   tripID,
 		DriverID: driverID,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, response)
-	require.Equal(t, domain.TripStatusStarted, response.Status)
+
+	expectedResponse := &service.StartTripResponse{
+		ID:            insertedTrip.ID,
+		DriverID:      insertedTrip.DriverID,
+		FromPoint:     insertedTrip.FromPoint,
+		ToPoint:       insertedTrip.ToPoint,
+		DepartureTime: insertedTrip.DepartureTime,
+		Seats:         insertedTrip.Seats,
+		Status:        domain.TripStatusStarted,
+		CreatedAt:     insertedTrip.CreatedAt,
+	}
+
+	require.WithinDuration(t, expectedResponse.DepartureTime, response.DepartureTime, time.Millisecond)
+	require.WithinDuration(t, expectedResponse.CreatedAt, response.CreatedAt, time.Millisecond)
+
+	expectedResponse.DepartureTime = response.DepartureTime
+	expectedResponse.CreatedAt = response.CreatedAt
+
+	require.Equal(t, expectedResponse, response)
 }
 
 func TestService_StartTrip_Denied(t *testing.T) {
@@ -64,29 +111,17 @@ func TestService_StartTrip_Denied(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	svc, repo, contractChecker := setupService(ctrl)
+	ctx := context.Background()
+
 	tripID := uuid.New()
 	driverID := uuid.New()
 
-	contractChecker := mocks.NewMockContractChecker(ctrl)
-	repository := mocks.NewMockTripRepository(ctrl)
-	repositoryTx := mocks.NewMockTripRepositoryTx(ctrl)
-
-	trip := domain.Trip{
-		ID:       tripID,
-		DriverID: driverID,
-		Status:   domain.TripStatusPublished,
-	}
-
-	repository.EXPECT().GetByID(gomock.Any(), tripID).Return(trip, nil)
+	insertTestTrip(t, ctx, repo, tripID, driverID)
 
 	contractChecker.EXPECT().
 		CheckService(gomock.Any(), driverID.String(), "tripCreation").
 		Return(service.CheckResult{Allowed: false, Reason: "service_not_allowed"}, nil)
-
-	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
-		return fn(ctx, repositoryTx)
-	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
 		TripID:   tripID,
@@ -107,29 +142,17 @@ func TestService_StartTrip_Timeout(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
+	svc, repo, contractChecker := setupService(ctrl)
+	ctx := context.Background()
+
 	tripID := uuid.New()
 	driverID := uuid.New()
 
-	contractChecker := mocks.NewMockContractChecker(ctrl)
-	repository := mocks.NewMockTripRepository(ctrl)
-	repositoryTx := mocks.NewMockTripRepositoryTx(ctrl)
-
-	trip := domain.Trip{
-		ID:       tripID,
-		DriverID: driverID,
-		Status:   domain.TripStatusPublished,
-	}
-
-	repository.EXPECT().GetByID(gomock.Any(), tripID).Return(trip, nil)
+	insertTestTrip(t, ctx, repo, tripID, driverID)
 
 	contractChecker.EXPECT().
 		CheckService(gomock.Any(), driverID.String(), "tripCreation").
 		Return(service.CheckResult{}, context.DeadlineExceeded)
-
-	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
-		return fn(ctx, repositoryTx)
-	}
-	svc := service.NewTripService(repository, runTripTx, nil, contractChecker, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
 		TripID:   tripID,
