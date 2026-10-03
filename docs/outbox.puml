@@ -9,7 +9,7 @@ queue "Kafka: trip.events" as Kafka
 API -> Service : Publish Trip
 Service -> DB : BEGIN TX
 Service -> DB : UPDATE trips SET status='published'
-Service -> DB : INSERT INTO outbox_events (event_id, type="TripPublished")
+Service -> DB : INSERT INTO outbox_events (event_id=UUIDv5(IK), type="TripPublished")
 Service -> DB : COMMIT TX
 Service --> API : 200 OK
 

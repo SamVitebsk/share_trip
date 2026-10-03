@@ -6,7 +6,8 @@ database "Notification DB\n(notifications, processed_events)" as DB
 
 Kafka -> Consumer : consume(event)
 Consumer -> DB : BEGIN TX
-Consumer -> DB : INSERT event_id INTO processed_events
+Consumer -> DB : INSERT event_id (IK) INTO processed_events
+note right: event_id is a deterministic\nUUIDv5 keys sent by Producer
 alt event_id is new
     Consumer -> DB : INSERT INTO notifications (driver, message)
     Consumer -> DB : COMMIT TX

@@ -28,7 +28,8 @@ type TripEventPayload struct {
 }
 
 func newTripEvent(tripID, driverID uuid.UUID, eventName string) (Event, error) {
-	eventID := uuid.New()
+	idempotencyKey := tripID.String() + "_" + eventName
+	eventID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(idempotencyKey))
 
 	kafkaEvent := TripEventPayload{
 		EventID:    eventID.String(),
