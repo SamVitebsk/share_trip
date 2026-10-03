@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gofiber/fiber/v2"
 	"io"
 	"net/http"
 	"share_trip/internal/api"
@@ -16,9 +17,11 @@ func TestServer_StartTrip(t *testing.T) {
 	t.Run("успешный старт поездки", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, driverID := insertTrip(t, "published")
 
-		startResp := startTrip(t, tripID, driverID)
+		startResp := startTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)
@@ -47,8 +50,10 @@ func TestServer_StartTrip(t *testing.T) {
 	t.Run("ошибка 403: доступ запрещен (другой водитель)", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, _ := insertTrip(t, "published")
-		startResp := startTrip(t, tripID, uuid.New())
+		startResp := startTrip(t, app, tripID, uuid.New())
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)
@@ -63,8 +68,10 @@ func TestServer_StartTrip(t *testing.T) {
 	t.Run("ошибка 409: статус не позволяет начать поездку", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, driverID := insertTrip(t, "draft")
-		startResp := startTrip(t, tripID, driverID)
+		startResp := startTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)
@@ -78,6 +85,8 @@ func TestServer_StartTrip(t *testing.T) {
 
 	t.Run("успех: поездка уже начата", func(t *testing.T) {
 		t.Parallel()
+
+		app := setupTestApp(t)
 
 		tripID, driverID := insertTrip(t, "started")
 
@@ -94,7 +103,7 @@ func TestServer_StartTrip(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		startResp := startTrip(t, tripID, driverID)
+		startResp := startTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)
@@ -121,7 +130,7 @@ func TestServer_StartTrip(t *testing.T) {
 	})
 }
 
-func startTrip(t *testing.T, tripID uuid.UUID, driverID uuid.UUID) *http.Response {
+func startTrip(t *testing.T, app *fiber.App, tripID uuid.UUID, driverID uuid.UUID) *http.Response {
 	t.Helper()
 
 	startReq, err := http.NewRequest(
@@ -132,7 +141,7 @@ func startTrip(t *testing.T, tripID uuid.UUID, driverID uuid.UUID) *http.Respons
 	require.NoError(t, err)
 	startReq.Header.Set(testAuthSubjectHeader, driverID.String())
 
-	startResp, err := testApp.Test(startReq, -1)
+	startResp, err := app.Test(startReq, -1)
 	require.NoError(t, err)
 
 	return startResp
@@ -174,7 +183,8 @@ func TestServer_StartTrip_Validation(t *testing.T) {
 	t.Run("ошибка 400: пустой ID поездки", func(t *testing.T) {
 		t.Parallel()
 
-		startResp := startTrip(t, uuid.Nil, uuid.New())
+		app := setupTestApp(t)
+		startResp := startTrip(t, app, uuid.Nil, uuid.New())
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)
@@ -187,7 +197,8 @@ func TestServer_StartTrip_Validation(t *testing.T) {
 	t.Run("ошибка 400: пустой ID водителя", func(t *testing.T) {
 		t.Parallel()
 
-		startResp := startTrip(t, uuid.New(), uuid.Nil)
+		app := setupTestApp(t)
+		startResp := startTrip(t, app, uuid.New(), uuid.Nil)
 		defer func() {
 			if err := startResp.Body.Close(); err != nil {
 				t.Errorf("close start response body: %v", err)

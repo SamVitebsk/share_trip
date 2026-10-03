@@ -37,7 +37,9 @@ func TestServer_CreateTrip(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set(testAuthSubjectHeader, driverID)
 
-		resp, err := testApp.Test(req, -1)
+		app := setupTestApp(t)
+
+		resp, err := app.Test(req, -1)
 		require.NoError(t, err)
 		defer func() {
 			if err := resp.Body.Close(); err != nil {

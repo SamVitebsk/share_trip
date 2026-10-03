@@ -3,6 +3,7 @@ package api_test
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gofiber/fiber/v2"
 	"io"
 	"net/http"
 	"share_trip/internal/api"
@@ -17,9 +18,11 @@ func TestServer_PublishTrip(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, driverID := insertTrip(t, "draft")
 
-		publishResp := publishTrip(t, tripID, driverID)
+		publishResp := publishTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -39,8 +42,10 @@ func TestServer_PublishTrip(t *testing.T) {
 	t.Run("forbidden when driver mismatch", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, _ := insertTrip(t, "draft")
-		publishResp := publishTrip(t, tripID, uuid.New())
+		publishResp := publishTrip(t, app, tripID, uuid.New())
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -55,8 +60,10 @@ func TestServer_PublishTrip(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID := uuid.New()
-		publishResp := publishTrip(t, tripID, uuid.New())
+		publishResp := publishTrip(t, app, tripID, uuid.New())
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -70,8 +77,10 @@ func TestServer_PublishTrip(t *testing.T) {
 	t.Run("conflict when status does not allow publishing", func(t *testing.T) {
 		t.Parallel()
 
+		app := setupTestApp(t)
+
 		tripID, driverID := insertTrip(t, "canceled")
-		publishResp := publishTrip(t, tripID, driverID)
+		publishResp := publishTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -85,6 +94,8 @@ func TestServer_PublishTrip(t *testing.T) {
 
 	t.Run("already published", func(t *testing.T) {
 		t.Parallel()
+
+		app := setupTestApp(t)
 
 		tripID, driverID := insertTrip(t, "published")
 
@@ -101,7 +112,7 @@ func TestServer_PublishTrip(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		publishResp := publishTrip(t, tripID, driverID)
+		publishResp := publishTrip(t, app, tripID, driverID)
 		defer func() {
 			if err := publishResp.Body.Close(); err != nil {
 				t.Errorf("close publish response body: %v", err)
@@ -119,7 +130,7 @@ func TestServer_PublishTrip(t *testing.T) {
 	})
 }
 
-func publishTrip(t *testing.T, tripID uuid.UUID, driverID uuid.UUID) *http.Response {
+func publishTrip(t *testing.T, app *fiber.App, tripID uuid.UUID, driverID uuid.UUID) *http.Response {
 	t.Helper()
 
 	publishReq, err := http.NewRequest(
@@ -130,7 +141,7 @@ func publishTrip(t *testing.T, tripID uuid.UUID, driverID uuid.UUID) *http.Respo
 	require.NoError(t, err)
 	publishReq.Header.Set(testAuthSubjectHeader, driverID.String())
 
-	publishResp, err := testApp.Test(publishReq, -1)
+	publishResp, err := app.Test(publishReq, -1)
 	require.NoError(t, err)
 
 	return publishResp

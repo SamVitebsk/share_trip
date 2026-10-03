@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"share_trip/internal/service/mocks"
 	"testing"
+
+	"go.uber.org/mock/gomock"
 
 	"share_trip/internal/api"
 	"share_trip/internal/api/middleware"
@@ -27,7 +30,6 @@ var (
 	testCtx  context.Context
 	testPool *pgxpool.Pool
 	testDB   *sql.DB
-	testApp  *fiber.App
 )
 
 func TestMain(m *testing.M) {
@@ -41,23 +43,6 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to setup test database: %v", err)
 	}
 	defer teardown()
-
-	registry := prometheus.NewRegistry()
-	appMetrics := metrics.New(registry)
-	repo := repository.NewRepoPg(testPool, appMetrics)
-	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
-		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
-			return fn(ctx, trips)
-		})
-	}
-	mockChecker := &mockContractChecker{allowed: true}
-	tripService := service.NewTripService(repo, runTripTx, appMetrics, mockChecker, &mockEventPublisher{})
-	tripHandler := api.NewTripHandler(tripService)
-	readyHandler := api.NewReadyHandler(repo)
-	server := api.NewServer(tripHandler, readyHandler)
-
-	testApp = fiber.New()
-	server.Route(testApp.Group("/api"), testAuthMiddleware, testKeycloakClientID)
 
 	os.Exit(m.Run())
 }
@@ -82,15 +67,30 @@ func testAuthMiddleware(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-type mockContractChecker struct {
-	allowed bool
-	err     error
-	reason  string
-}
+func setupTestApp(t *testing.T) *fiber.App {
+	t.Helper()
 
-func (m *mockContractChecker) CheckService(_ context.Context, _ string, _ string) (service.CheckResult, error) {
-	return service.CheckResult{
-		Allowed: m.allowed,
-		Reason:  m.reason,
-	}, m.err
+	ctrl := gomock.NewController(t)
+	contractMock := mocks.NewMockContractChecker(ctrl)
+	contractMock.EXPECT().
+		CheckService(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(service.CheckResult{Allowed: true}, nil).
+		AnyTimes()
+
+	repo := repository.NewRepoPg(testPool, metrics.New(prometheus.NewRegistry()))
+	runTripTx := func(ctx context.Context, fn func(context.Context, service.TripRepositoryTx) error) error {
+		return repo.WithinTripTx(ctx, func(ctx context.Context, trips *repository.TripRepoTx) error {
+			return fn(ctx, trips)
+		})
+	}
+
+	tripService := service.NewTripService(repo, runTripTx, metrics.New(prometheus.NewRegistry()), contractMock)
+	tripHandler := api.NewTripHandler(tripService)
+	readyHandler := api.NewReadyHandler(repo)
+	server := api.NewServer(tripHandler, readyHandler)
+
+	app := fiber.New()
+	server.Route(app.Group("/api"), testAuthMiddleware, testKeycloakClientID)
+
+	return app
 }

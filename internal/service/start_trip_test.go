@@ -31,7 +31,7 @@ func setupService(ctrl *gomock.Controller) (*service.TripService, service.TripRe
 
 	contractChecker := mocks.NewMockContractChecker(ctrl)
 
-	svc := service.NewTripService(repo, runTripTx, appMetrics, contractChecker, nil)
+	svc := service.NewTripService(repo, runTripTx, appMetrics, contractChecker)
 	return svc, repo, contractChecker
 }
 

@@ -12,7 +12,6 @@ type TripService struct {
 	runTripTx       TripTxRunner
 	metrics         *metrics.Metrics
 	contractChecker ContractChecker
-	eventPublisher  EventPublisher
 }
 
 func NewTripService(
@@ -20,13 +19,11 @@ func NewTripService(
 	runTripTx TripTxRunner,
 	metrics *metrics.Metrics,
 	contractChecker ContractChecker,
-	eventPublisher EventPublisher,
 ) *TripService {
 	return &TripService{
 		tripRepository:  trips,
 		runTripTx:       runTripTx,
 		metrics:         metrics,
 		contractChecker: contractChecker,
-		eventPublisher:  eventPublisher,
 	}
 }

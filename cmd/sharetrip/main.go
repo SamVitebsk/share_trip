@@ -89,7 +89,7 @@ func main() {
 		})
 	}
 	producer := kafka.NewProducer(cfg.Kafka.Brokers, cfg.Kafka.Topic)
-	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient, producer)
+	tripService := service.NewTripService(repo, runTripTx, appMetrics, contractClient)
 	tripHandler := api.NewTripHandler(tripService)
 	readyHandler := api.NewReadyHandler(repo)
 
