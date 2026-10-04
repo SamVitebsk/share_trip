@@ -18,6 +18,7 @@ import (
 )
 
 func TestClient_CheckService(t *testing.T) {
+	checkServiceRequest := service.CheckServiceRequest{DriverID: uuid.New().String(), ServiceCode: "tripCreation"}
 	t.Run("успешный ответ", func(t *testing.T) {
 		t.Parallel()
 
@@ -39,7 +40,7 @@ func TestClient_CheckService(t *testing.T) {
 		client, err := contract.NewClient(cfg)
 		require.NoError(t, err)
 
-		res, err := client.CheckService(context.Background(), uuid.New().String(), "tripCreation")
+		res, err := client.CheckService(context.Background(), checkServiceRequest)
 		require.NoError(t, err)
 
 		expected := service.CheckResult{
@@ -74,7 +75,7 @@ func TestClient_CheckService(t *testing.T) {
 		client, err := contract.NewClient(cfg)
 		require.NoError(t, err)
 
-		res, err := client.CheckService(context.Background(), uuid.New().String(), "tripCreation")
+		res, err := client.CheckService(context.Background(), checkServiceRequest)
 		require.NoError(t, err)
 
 		expected := service.CheckResult{
@@ -103,7 +104,7 @@ func TestClient_CheckService(t *testing.T) {
 		client, err := contract.NewClient(cfg)
 		require.NoError(t, err)
 
-		_, err = client.CheckService(context.Background(), uuid.New().String(), "tripCreation")
+		_, err = client.CheckService(context.Background(), checkServiceRequest)
 
 		require.Error(t, err)
 		require.Equal(t, 3, attempts)

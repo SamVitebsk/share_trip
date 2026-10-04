@@ -73,8 +73,9 @@ func TestService_StartTrip_Allowed(t *testing.T) {
 
 	insertedTrip := insertTestTrip(t, ctx, repo, tripID, driverID)
 
+	checkServiceRequest := service.CheckServiceRequest{DriverID: driverID.String(), ServiceCode: "tripCreation"}
 	contractChecker.EXPECT().
-		CheckService(gomock.Any(), driverID.String(), "tripCreation").
+		CheckService(gomock.Any(), checkServiceRequest).
 		Return(service.CheckResult{Allowed: true, Reason: "service_allowed"}, nil)
 
 	response, err := svc.StartTrip(ctx, service.StartTripRequest{
@@ -119,8 +120,9 @@ func TestService_StartTrip_Denied(t *testing.T) {
 
 	insertTestTrip(t, ctx, repo, tripID, driverID)
 
+	checkServiceRequest := service.CheckServiceRequest{DriverID: driverID.String(), ServiceCode: "tripCreation"}
 	contractChecker.EXPECT().
-		CheckService(gomock.Any(), driverID.String(), "tripCreation").
+		CheckService(gomock.Any(), checkServiceRequest).
 		Return(service.CheckResult{Allowed: false, Reason: "service_not_allowed"}, nil)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{
@@ -150,8 +152,9 @@ func TestService_StartTrip_Timeout(t *testing.T) {
 
 	insertTestTrip(t, ctx, repo, tripID, driverID)
 
+	checkServiceRequest := service.CheckServiceRequest{DriverID: driverID.String(), ServiceCode: "tripCreation"}
 	contractChecker.EXPECT().
-		CheckService(gomock.Any(), driverID.String(), "tripCreation").
+		CheckService(gomock.Any(), checkServiceRequest).
 		Return(service.CheckResult{}, context.DeadlineExceeded)
 
 	response, err := svc.StartTrip(context.Background(), service.StartTripRequest{

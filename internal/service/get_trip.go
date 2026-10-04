@@ -54,7 +54,7 @@ func (s *TripService) GetTrip(ctx context.Context, req GetTripRequest) (TripResp
 	if errors.Is(err, repository.ErrNotFound) {
 		tripErr := NotFound(fmt.Sprintf("поездка не найдена: %s", req.TripID))
 		span.RecordError(tripErr)
-		span.SetStatus(codes.Error, tripErr.Error())
+		span.SetStatus(codes.Error, "failed to fetch trip")
 		logger.WarnContext(
 			ctx,
 			"получение поездки не выполнено: поездка не найдена",
@@ -76,7 +76,7 @@ func (s *TripService) GetTrip(ctx context.Context, req GetTripRequest) (TripResp
 	if trip.DriverID != req.DriverID {
 		tripErr := Forbidden("доступ к поездке запрещен")
 		span.RecordError(tripErr)
-		span.SetStatus(codes.Error, tripErr.Error())
+		span.SetStatus(codes.Error, "failed to fetch trip")
 		logger.WarnContext(
 			ctx,
 			"получение поездки не выполнено: поездка принадлежит другому водителю",

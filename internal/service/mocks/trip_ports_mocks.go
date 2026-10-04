@@ -181,18 +181,18 @@ func (m *MockContractChecker) EXPECT() *MockContractCheckerMockRecorder {
 }
 
 // CheckService mocks base method.
-func (m *MockContractChecker) CheckService(ctx context.Context, driverID, serviceCode string) (service.CheckResult, error) {
+func (m *MockContractChecker) CheckService(ctx context.Context, req service.CheckServiceRequest) (service.CheckResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckService", ctx, driverID, serviceCode)
+	ret := m.ctrl.Call(m, "CheckService", ctx, req)
 	ret0, _ := ret[0].(service.CheckResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CheckService indicates an expected call of CheckService.
-func (mr *MockContractCheckerMockRecorder) CheckService(ctx, driverID, serviceCode any) *gomock.Call {
+func (mr *MockContractCheckerMockRecorder) CheckService(ctx, req any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckService", reflect.TypeOf((*MockContractChecker)(nil).CheckService), ctx, driverID, serviceCode)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckService", reflect.TypeOf((*MockContractChecker)(nil).CheckService), ctx, req)
 }
 
 // MockEventPublisher is a mock of EventPublisher interface.

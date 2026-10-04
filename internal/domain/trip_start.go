@@ -1,26 +1,66 @@
 package domain
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
 
-func (t *Trip) Start(driverID uuid.UUID) error {
-	if t.DriverID != driverID {
-		return ErrTripDriverMismatch
+type StartTripRequest struct {
+	TripID   uuid.UUID
+	DriverID uuid.UUID
+}
+
+type StartTripResponse struct {
+	Trip          Trip
+	FromStatus    TripStatus
+	StatusChanged bool
+}
+
+func StartTrip(ctx context.Context, req StartTripRequest, tx TripRepositoryTx) (StartTripResponse, error) {
+	trip, err := tx.GetForUpdateByID(ctx, req.TripID)
+	if err != nil {
+		return StartTripResponse{}, err
 	}
 
-	if t.Status == TripStatusStarted {
-		return nil
+	fromStatus := trip.Status
+
+	if trip.DriverID != req.DriverID {
+		return StartTripResponse{}, ErrTripDriverMismatch
 	}
 
-	fromStatus := t.Status
-	if fromStatus != TripStatusPublished {
-		return fmt.Errorf("%w: %s -> %s", ErrTripInvalidStatusTransition, fromStatus, TripStatusStarted)
+	if trip.Status == TripStatusStarted {
+		return StartTripResponse{Trip: trip, FromStatus: fromStatus, StatusChanged: false}, nil
 	}
 
-	t.Status = TripStatusStarted
+	if !canTransitionTripStatus(fromStatus, TripStatusStarted) {
+		return StartTripResponse{}, fmt.Errorf("%w: %s -> %s", ErrTripInvalidStatusTransition, fromStatus, TripStatusStarted)
+	}
 
-	return nil
+	trip.Status = TripStatusStarted
+
+	updatedTrip, err := tx.UpdateStatus(ctx, trip.ID, trip.Status)
+	if err != nil {
+		return StartTripResponse{}, err
+	}
+
+	history := TripHistory{
+		ID:         uuid.New(),
+		TripID:     trip.ID,
+		FromStatus: &fromStatus,
+		ToStatus:   trip.Status,
+		CreatedAt:  time.Now(),
+	}
+
+	if err := tx.CreateHistory(ctx, history); err != nil {
+		return StartTripResponse{}, err
+	}
+
+	return StartTripResponse{
+		Trip:          updatedTrip,
+		FromStatus:    fromStatus,
+		StatusChanged: true,
+	}, nil
 }

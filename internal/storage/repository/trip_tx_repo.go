@@ -34,7 +34,7 @@ func (r *RepoPg) WithinTripTx(ctx context.Context, fn func(ctx context.Context, 
 	})
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		return err
 	}
 

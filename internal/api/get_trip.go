@@ -46,7 +46,7 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 	driverID, err := driverIDFromClaims(c)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to get driver id from claims")
 		logger.Warn(
 			"получение поездки не выполнено: данные пользователя не получены",
 			slog.Any("error", err),
@@ -57,7 +57,7 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 	tripRequest, err := parseGetTripRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process get trip")
 		logger.Warn(
 			"получение поездки не выполнено: некорректный запрос",
 			slog.Any("error", err),
@@ -73,12 +73,10 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
-	logger.Info("запрос на получение поездки принят")
-
 	trip, err := h.tripService.GetTrip(ctx, tripRequest)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process get trip")
 		logger.Error(
 			"получение поездки не выполнено",
 			slog.Any("error", err),
@@ -86,11 +84,6 @@ func (h *TripHandler) GetTrip(c *fiber.Ctx) error {
 		return writeServiceError(c, err)
 	}
 
-	logger.Info(
-		"получение поездки завершено",
-		slog.String("driver_id", trip.DriverID.String()),
-		slog.String("status", string(trip.Status)),
-	)
 	span.SetAttributes(
 		attribute.String("trip_id", trip.ID.String()),
 		attribute.String("driver_id", trip.DriverID.String()),

@@ -46,7 +46,7 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	var req CreateTripRequest
 	if err := c.BodyParser(&req); err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process create trip")
 		logger.Warn(
 			"создание поездки не выполнено: некорректный JSON в теле запроса",
 			slog.Any("error", err),
@@ -57,7 +57,7 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	driverID, err := driverIDFromClaims(c)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to get driver id from claims")
 		logger.Warn(
 			"создание поездки не выполнено: данные пользователя не получены",
 			slog.Any("error", err),
@@ -68,7 +68,7 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	createTripRequest, err := createTripRequest(req, driverID)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process create trip")
 		logger.Warn(
 			"создание поездки не выполнено: некорректный запрос",
 			slog.Any("error", err),
@@ -83,12 +83,10 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
-	logger.Info("запрос на создание поездки принят")
-
 	result, err := h.tripService.CreateTrip(ctx, createTripRequest)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process request in service layer")
 		logger.Error(
 			"создание поездки не выполнено",
 			slog.Any("error", err),
@@ -96,10 +94,6 @@ func (h *TripHandler) CreateTrip(c *fiber.Ctx) error {
 		return writeServiceError(c, err)
 	}
 
-	logger.Info(
-		"создание поездки завершено",
-		slog.String("trip_id", result.TripID.String()),
-	)
 	span.SetAttributes(
 		attribute.String("trip_id", result.TripID.String()),
 		attribute.String("driver_id", createTripRequest.DriverID.String()),

@@ -40,15 +40,15 @@ func NewClient(cfg config.ContractConfig) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) CheckService(ctx context.Context, driverID string, serviceCode string) (service.CheckResult, error) {
-	parsedID, err := uuid.Parse(driverID)
+func (c *Client) CheckService(ctx context.Context, req service.CheckServiceRequest) (service.CheckResult, error) {
+	parsedID, err := uuid.Parse(req.DriverID)
 	if err != nil {
 		return service.CheckResult{}, err
 	}
 
 	reqBody := contractgen.CheckServiceAvailabilityJSONRequestBody{
 		ClientId:    parsedID,
-		ServiceCode: contractgen.ServiceCode(serviceCode),
+		ServiceCode: contractgen.ServiceCode(req.ServiceCode),
 	}
 
 	resp, err := c.client.CheckServiceAvailabilityWithResponse(ctx, reqBody)

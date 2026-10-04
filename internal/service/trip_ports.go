@@ -22,9 +22,14 @@ type TripRepositoryTx interface {
 	CreateOutboxEvent(ctx context.Context, event outbox.Event) error
 }
 
+type CheckServiceRequest struct {
+	DriverID    string
+	ServiceCode string
+}
+
 //go:generate go run go.uber.org/mock/mockgen@latest -source=trip_ports.go -destination=mocks/trip_ports_mocks.go -package=mocks
 type ContractChecker interface {
-	CheckService(ctx context.Context, driverID string, serviceCode string) (CheckResult, error)
+	CheckService(ctx context.Context, req CheckServiceRequest) (CheckResult, error)
 }
 
 type CheckResult struct {

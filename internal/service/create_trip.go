@@ -58,7 +58,7 @@ func (s *TripService) CreateTrip(ctx context.Context, req CreateTripRequest) (Cr
 	if err := validateCreateTripRequest(req, now); err != nil {
 		result = metricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "trip creation failed")
 		logger.Warn(
 			"создание поездки не выполнено: ошибка валидации",
 			slog.Any("error", err),
@@ -98,7 +98,7 @@ func (s *TripService) CreateTrip(ctx context.Context, req CreateTripRequest) (Cr
 	if err != nil {
 		result = metricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "trip creation failed")
 		logger.Error(
 			"создание поездки не выполнено: ошибка repository",
 			slog.Any("error", err),

@@ -6,7 +6,11 @@ var tripStatusTransitions = map[TripStatus]map[TripStatus]struct{}{
 		TripStatusCanceled:  {},
 	},
 	TripStatusPublished: {
+		TripStatusStarted:   {},
 		TripStatusCanceled:  {},
+		TripStatusCompleted: {},
+	},
+	TripStatusStarted: {
 		TripStatusCompleted: {},
 	},
 }

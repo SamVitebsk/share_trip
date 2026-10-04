@@ -1,6 +1,10 @@
 package outbox
 
 import (
+	"go.opentelemetry.io/otel/trace"
+
+	"context"
+
 	"encoding/json"
 	"time"
 
@@ -25,18 +29,36 @@ type TripEventPayload struct {
 	TripID     string    `json:"trip_id"`
 	DriverID   string    `json:"driver_id"`
 	OccurredAt time.Time `json:"occurred_at"`
+	TraceID    string    `json:"trace_id,omitempty"`
+	SpanID     string    `json:"span_id,omitempty"`
 }
 
-func newTripEvent(tripID, driverID uuid.UUID, eventName string) (Event, error) {
-	idempotencyKey := tripID.String() + "_" + eventName
+type TripEventRequest struct {
+	TripID   uuid.UUID
+	DriverID uuid.UUID
+}
+
+func newTripEvent(ctx context.Context, req TripEventRequest, eventName string) (Event, error) {
+	idempotencyKey := req.TripID.String() + "_" + eventName
 	eventID := uuid.NewSHA1(uuid.NameSpaceOID, []byte(idempotencyKey))
+
+	spanCtx := trace.SpanContextFromContext(ctx)
+	var traceID, spanID string
+	if spanCtx.HasTraceID() {
+		traceID = spanCtx.TraceID().String()
+	}
+	if spanCtx.HasSpanID() {
+		spanID = spanCtx.SpanID().String()
+	}
 
 	kafkaEvent := TripEventPayload{
 		EventID:    eventID.String(),
 		EventType:  eventName,
-		TripID:     tripID.String(),
-		DriverID:   driverID.String(),
+		TripID:     req.TripID.String(),
+		DriverID:   req.DriverID.String(),
 		OccurredAt: time.Now(),
+		TraceID:    traceID,
+		SpanID:     spanID,
 	}
 
 	payload, err := json.Marshal(kafkaEvent)
@@ -47,15 +69,15 @@ func newTripEvent(tripID, driverID uuid.UUID, eventName string) (Event, error) {
 	return Event{
 		ID:          eventID,
 		EventName:   eventName,
-		AggregateID: tripID,
+		AggregateID: req.TripID,
 		Payload:     payload,
 	}, nil
 }
 
-func NewTripPublishedEvent(tripID, driverID uuid.UUID) (Event, error) {
-	return newTripEvent(tripID, driverID, EventNameTripPublished)
+func NewTripPublishedEvent(ctx context.Context, req TripEventRequest) (Event, error) {
+	return newTripEvent(ctx, req, EventNameTripPublished)
 }
 
-func NewTripStartedEvent(tripID, driverID uuid.UUID) (Event, error) {
-	return newTripEvent(tripID, driverID, EventNameTripStarted)
+func NewTripStartedEvent(ctx context.Context, req TripEventRequest) (Event, error) {
+	return newTripEvent(ctx, req, EventNameTripStarted)
 }

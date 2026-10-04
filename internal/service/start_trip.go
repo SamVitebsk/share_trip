@@ -46,7 +46,7 @@ func (s *TripService) StartTrip(ctx context.Context, req StartTripRequest) (*Sta
 
 	if err := validateStartTripRequest(req); err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "trip start failed")
 		return nil, err
 	}
 
@@ -64,7 +64,8 @@ func (s *TripService) StartTrip(ctx context.Context, req StartTripRequest) (*Sta
 		return nil, startTripError(req.TripID, domain.ErrTripDriverMismatch)
 	}
 
-	checkResult, err := s.contractChecker.CheckService(ctx, trip.DriverID.String(), "tripCreation")
+	checkServiceRequest := CheckServiceRequest{DriverID: trip.DriverID.String(), ServiceCode: "tripCreation"}
+	checkResult, err := s.contractChecker.CheckService(ctx, checkServiceRequest)
 	if err != nil {
 		logger.ErrorContext(ctx, "не удалось проверить права через Contract Service", slog.Any("error", err))
 		return nil, fmt.Errorf("не удалось проверить права на старт поездки: %w", err)
@@ -77,42 +78,28 @@ func (s *TripService) StartTrip(ctx context.Context, req StartTripRequest) (*Sta
 
 	var startedTrip domain.Trip
 
-	err = s.runTripTx(ctx, func(ctx context.Context, tripRepositoryTx TripRepositoryTx) error {
-		tripTx, err := tripRepositoryTx.GetForUpdateByID(ctx, req.TripID)
+	err = s.runTripTx(ctx, func(ctx context.Context, tx TripRepositoryTx) error {
+		res, err := domain.StartTrip(ctx, domain.StartTripRequest{
+			TripID:   req.TripID,
+			DriverID: req.DriverID,
+		}, tx)
+
 		if err != nil {
 			return startTripError(req.TripID, err)
 		}
 
-		fromStatus := tripTx.Status
+		startedTrip = res.Trip
 
-		if err := tripTx.Start(req.DriverID); err != nil {
-			return startTripError(req.TripID, err)
-		}
-
-		startedTrip = tripTx
-
-		if fromStatus != tripTx.Status {
-			_, err = tripRepositoryTx.UpdateStatus(ctx, tripTx.ID, tripTx.Status)
+		if res.StatusChanged {
+			outboxReq := outbox.TripEventRequest{
+				TripID:   res.Trip.ID,
+				DriverID: res.Trip.DriverID,
+			}
+			event, err := outbox.NewTripStartedEvent(ctx, outboxReq)
 			if err != nil {
 				return startTripError(req.TripID, err)
 			}
-
-			history := domain.TripHistory{
-				ID:         uuid.New(),
-				TripID:     tripTx.ID,
-				FromStatus: &fromStatus,
-				ToStatus:   tripTx.Status,
-				CreatedAt:  time.Now(),
-			}
-			if err := tripRepositoryTx.CreateHistory(ctx, history); err != nil {
-				return startTripError(req.TripID, err)
-			}
-
-			event, err := outbox.NewTripStartedEvent(tripTx.ID, tripTx.DriverID)
-			if err != nil {
-				return startTripError(req.TripID, err)
-			}
-			if err := tripRepositoryTx.CreateOutboxEvent(ctx, event); err != nil {
+			if err := tx.CreateOutboxEvent(ctx, event); err != nil {
 				return startTripError(req.TripID, err)
 			}
 		}
@@ -122,7 +109,7 @@ func (s *TripService) StartTrip(ctx context.Context, req StartTripRequest) (*Sta
 
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "trip start failed")
 		return nil, startTripError(req.TripID, err)
 	}
 

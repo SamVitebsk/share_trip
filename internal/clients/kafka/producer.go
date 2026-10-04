@@ -14,6 +14,8 @@ type TripPublished struct {
 	TripID     string    `json:"trip_id"`
 	DriverID   string    `json:"driver_id"`
 	OccurredAt time.Time `json:"occurred_at"`
+	TraceID    string    `json:"trace_id,omitempty"`
+	SpanID     string    `json:"span_id,omitempty"`
 }
 
 type Producer struct {

@@ -73,7 +73,7 @@ func setupTestApp(t *testing.T) *fiber.App {
 	ctrl := gomock.NewController(t)
 	contractMock := mocks.NewMockContractChecker(ctrl)
 	contractMock.EXPECT().
-		CheckService(gomock.Any(), gomock.Any(), gomock.Any()).
+		CheckService(gomock.Any(), gomock.Any()).
 		Return(service.CheckResult{Allowed: true}, nil).
 		AnyTimes()
 

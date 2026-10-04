@@ -40,7 +40,7 @@ func (h *TripHandler) StartTrip(c *fiber.Ctx) error {
 	driverID, err := driverIDFromClaims(c)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to get driver id from claims")
 		logger.Warn(
 			"старт поездки не выполнен: данные пользователя не получены",
 			slog.Any("error", err),
@@ -51,7 +51,7 @@ func (h *TripHandler) StartTrip(c *fiber.Ctx) error {
 	startTripRequest, err := parseStartTripRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process start trip")
 		logger.Warn(
 			"старт поездки не выполнен: некорректный запрос",
 			slog.Any("error", err),
@@ -70,12 +70,10 @@ func (h *TripHandler) StartTrip(c *fiber.Ctx) error {
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
-	logger.Info("запрос на старт поездки принят")
-
 	startTripResponse, err := h.tripService.StartTrip(ctx, *startTripRequest)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process start trip")
 		logger.Error(
 			"старт поездки не выполнен",
 			slog.Any("error", err),
@@ -83,10 +81,6 @@ func (h *TripHandler) StartTrip(c *fiber.Ctx) error {
 		return writeServiceError(c, err)
 	}
 
-	logger.Info(
-		"старт поездки завершен успешно",
-		slog.String("status", string(startTripResponse.Status)),
-	)
 	span.SetAttributes(attribute.String("status", string(startTripResponse.Status)))
 
 	return c.Status(fiber.StatusOK).JSON(toStartTripResponse(startTripResponse))

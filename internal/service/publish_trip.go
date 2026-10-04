@@ -53,11 +53,9 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 		slog.String("operation", "PublishTrip"),
 	)
 
-	logger.InfoContext(ctx, "публикация поездки в service начата")
-
 	if err := validatePublishTripRequest(req); err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "request validation failed")
 		logger.WarnContext(
 			ctx,
 			"публикация поездки не выполнена: ошибка валидации",
@@ -70,39 +68,27 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 	var fromStatus domain.TripStatus
 
 	err := s.runTripTx(ctx, func(ctx context.Context, tx TripRepositoryTx) error {
-		trip, err := tx.GetForUpdateByID(ctx, req.TripID)
+		res, err := domain.PublishTrip(ctx, domain.PublishTripRequest{
+			TripID:   req.TripID,
+			DriverID: req.DriverID,
+		}, tx)
+
 		if err != nil {
 			return publishTripError(req.TripID, err)
 		}
 
-		fromStatus = trip.Status
-		if err := trip.Publish(req.DriverID); err != nil {
-			return publishTripError(req.TripID, err)
-		}
+		publishedTrip = res.Trip
+		fromStatus = res.FromStatus
 
-		if fromStatus == trip.Status {
-			publishedTrip = trip
+		if !res.StatusChanged {
 			return nil
 		}
 
-		updatedTrip, err := tx.UpdateStatus(ctx, trip.ID, trip.Status)
-		if err != nil {
-			return publishTripError(req.TripID, err)
+		outboxReq := outbox.TripEventRequest{
+			TripID:   res.Trip.ID,
+			DriverID: res.Trip.DriverID,
 		}
-		publishedTrip = updatedTrip
-
-		history := domain.TripHistory{
-			ID:         uuid.New(),
-			TripID:     trip.ID,
-			FromStatus: &fromStatus,
-			ToStatus:   trip.Status,
-			CreatedAt:  time.Now(),
-		}
-		if err := tx.CreateHistory(ctx, history); err != nil {
-			return publishTripError(req.TripID, err)
-		}
-
-		event, err := outbox.NewTripPublishedEvent(trip.ID, trip.DriverID)
+		event, err := outbox.NewTripPublishedEvent(ctx, outboxReq)
 		if err != nil {
 			return publishTripError(req.TripID, err)
 		}
@@ -113,15 +99,10 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 		return nil
 	})
 
-	span.SetAttributes(
-		attribute.String("from_status", string(fromStatus)),
-		attribute.String("to_status", string(publishedTrip.Status)),
-	)
-
 	if err != nil {
 		tripErr := publishTripError(req.TripID, err)
 		span.RecordError(tripErr)
-		span.SetStatus(codes.Error, tripErr.Error())
+		span.SetStatus(codes.Error, "trip publishing failed")
 		logger.ErrorContext(
 			ctx,
 			"публикация поездки в service не выполнена",
@@ -130,6 +111,11 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 		return nil, tripErr
 	}
 
+	span.SetAttributes(
+		attribute.String("from_status", string(fromStatus)),
+		attribute.String("to_status", string(publishedTrip.Status)),
+	)
+
 	if publishEventCreated {
 		s.metrics.TripPublishTotal.WithLabelValues(metricResultSuccess).Inc()
 		s.metrics.TripPublishDuration.WithLabelValues(metricResultSuccess).
@@ -137,12 +123,8 @@ func (s *TripService) PublishTrip(ctx context.Context, req PublishTripRequest) (
 	}
 
 	publishTripResult := toPublishTripResult(publishedTrip)
-	logger.InfoContext(
-		ctx,
-		"публикация поездки в service завершена",
-		slog.String("status", string(publishTripResult.Status)),
-	)
 	span.SetAttributes(attribute.String("status", string(publishTripResult.Status)))
+
 	return &publishTripResult, nil
 }
 

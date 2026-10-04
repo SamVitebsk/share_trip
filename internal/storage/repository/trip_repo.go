@@ -58,7 +58,7 @@ func (r *RepoPg) Create(ctx context.Context, trip domain.Trip, history domain.Tr
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		return err
 	}
 
@@ -107,7 +107,7 @@ func insertTrip(ctx context.Context, exec executor, tripEntity tripEntity) error
 	)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		logger.ErrorContext(
 			ctx,
 			"insert поездки не выполнен",
@@ -163,7 +163,7 @@ func insertTripHistory(ctx context.Context, exec executor, historyEntity tripHis
 	)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		logger.ErrorContext(
 			ctx,
 			"insert истории поездки не выполнен",
@@ -223,7 +223,7 @@ func (r *RepoPg) GetByID(ctx context.Context, tripId uuid.UUID) (domain.Trip, er
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		if errors.Is(err, ErrNotFound) {
 			logger.WarnContext(
 				ctx,
@@ -303,7 +303,7 @@ func (r *TripRepoTx) GetForUpdateByID(ctx context.Context, tripId uuid.UUID) (do
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		logger.ErrorContext(
 			ctx,
 			"select поездки для обновления не выполнен",
@@ -373,7 +373,7 @@ func (r *TripRepoTx) UpdateStatus(ctx context.Context, tripId uuid.UUID, status 
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		logger.ErrorContext(
 			ctx,
 			"update статуса поездки не выполнен",
@@ -420,7 +420,7 @@ func (r *TripRepoTx) CreateHistory(ctx context.Context, history domain.TripHisto
 	if err := insertTripHistory(ctx, r.tx, historyEntity); err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		return fmt.Errorf("append trip history: %w", err)
 	}
 

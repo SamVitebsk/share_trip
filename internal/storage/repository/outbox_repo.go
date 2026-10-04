@@ -64,7 +64,7 @@ func (r *TripRepoTx) CreateOutboxEvent(ctx context.Context, event outbox.Event) 
 	if err != nil {
 		result = repositoryMetricResultFromError(err)
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "database operation failed")
 		logger.ErrorContext(
 			ctx,
 			"insert outbox-события не выполнен",

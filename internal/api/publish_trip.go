@@ -41,7 +41,7 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 	driverID, err := driverIDFromClaims(c)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to get driver id from claims")
 		logger.Warn(
 			"публикация поездки не выполнена: данные пользователя не получены",
 			slog.Any("error", err),
@@ -52,7 +52,7 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 	publishTripRequest, err := parsePublishTripRequest(c.Params("tripId"), driverID)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process publish trip")
 		logger.Warn(
 			"публикация поездки не выполнена: некорректный запрос",
 			slog.Any("error", err),
@@ -71,12 +71,10 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 	ctx = logctx.WithLogger(ctx, logger)
 	c.SetUserContext(ctx)
 
-	logger.Info("запрос на публикацию поездки принят")
-
 	result, err := h.tripService.PublishTrip(ctx, *publishTripRequest)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
+		span.SetStatus(codes.Error, "failed to process request in service layer")
 		logger.Error(
 			"публикация поездки не выполнена",
 			slog.Any("error", err),
@@ -84,10 +82,6 @@ func (h *TripHandler) PublishTrip(c *fiber.Ctx) error {
 		return writeServiceError(c, err)
 	}
 
-	logger.Info(
-		"публикация поездки завершена",
-		slog.String("status", string(result.Status)),
-	)
 	span.SetAttributes(attribute.String("status", string(result.Status)))
 
 	return c.Status(fiber.StatusOK).JSON(toPublishTripResponse(result))
